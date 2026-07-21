@@ -47,6 +47,17 @@ Qualification removes repeated model benchmarking only. It never removes project
 
 If the registry cannot be read, report the exact failure and set Next Owner to Boss or Paused. Do not infer qualification from memory.
 
+## Score Calibration and Renewal
+
+The registry keeps a 0–100 dispatch score per model in its `## Scores` section. The score is the controller's dispatch input and is subordinate to the Qualification States — a high score never waives project tests, review or red-line approval.
+
+1. `score: 0` means uncalibrated. A 0-score model may only receive a calibration gate: one bounded, low-risk gate with automated validation. Never dispatch a production gate to a 0-score model.
+2. Passing calibration sets the baseline score to 60. Each subsequently accepted gate: +5 (cap 95). Each rejected gate: −10 (floor 0 — back to calibration).
+3. Give new models a chance: a newly registered model gets a calibration gate scheduled before its first production need — never shelve it indefinitely. When building the candidate list for a low/medium-risk gate, include at least one model with score < 60 if its taskClass matches, marked as a new-model opportunity.
+4. Give proven models a chance to re-prove themselves: a score goes stale 30 days after its last accepted evidence. After every 10 accepted gates — or when a stale model is needed — the controller schedules one low-risk renewal gate. Passing restores the score; failing applies −10. A stale model may still be dispatched, at a −10 candidate-rating penalty.
+5. Quota exhaustion or unavailability is not a failure: mark cooldown, deduct nothing, and on the model's return offer one low-cost gate to re-establish availability.
+6. All score changes follow the registry write protocol: re-read registryRevision, merge instead of overwriting, increment by exactly 1.
+
 ## Manual Relay Mode
 
 Use this mode when the controller cannot directly invoke the selected model or the user prefers to copy prompts. Missing API, CLI or subagent routing is not a blocker and must not be presented as one.
