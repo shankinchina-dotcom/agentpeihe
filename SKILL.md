@@ -64,7 +64,7 @@ Use this mode when the controller cannot directly invoke the selected model or t
 
 The controller must output the recommended next model, bounded responsibility, selection reason, qualification status, `调用方式：人工中继，不声称已实际调用`, one self-contained `可复制提示词`, and the return requirements.
 
-The copyable prompt names the project and rule paths, role, one gate, goal, allowed actions, forbidden actions, exact file scope, validation, stop conditions, report format, Runtime Identity and Next Owner. `Runtime Identity` reports the actual platform, exact visible model label and tool access; unknown fields are `unresolved`. It requires the external executor to stop after one gate and return both `Gate Execution Report` and:
+The copyable prompt names the project and rule paths, role, one gate, goal, allowed actions, forbidden actions, exact file scope, validation, stop conditions, report format, Runtime Identity and Next Owner. In manual relay mode the executor's `Next Owner` must name the controller **and** the transport, e.g. `Next Owner: Controller（Claude），经主公人工中继转交` — so the human relaying the report sees the loop close without protocol knowledge. `Runtime Identity` reports the actual platform, exact visible model label and tool access; unknown fields are `unresolved`. It requires the external executor to stop after one gate and return both `Gate Execution Report` and:
 
 ```text
 ## Next Handoff Proposal
