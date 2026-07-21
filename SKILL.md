@@ -49,14 +49,31 @@ If the registry cannot be read, report the exact failure and set Next Owner to B
 
 ## Score Calibration and Renewal
 
-The registry keeps a 0–100 dispatch score per model in its `## Scores` section. The score is the controller's dispatch input and is subordinate to the Qualification States — a high score never waives project tests, review or red-line approval.
+The registry keeps **multi-dimensional 0–100 dispatch scores** per model in its `## Scores` section — one score per capability dimension, never a single flattened number. A high score in one dimension says nothing about other dimensions. All scores are subordinate to the Qualification States — they never waive project tests, review or red-line approval.
 
-1. `score: 0` means uncalibrated. A 0-score model may only receive a calibration gate: one bounded, low-risk gate with automated validation. Never dispatch a production gate to a 0-score model.
-2. Passing calibration sets the baseline score to 60. Each subsequently accepted gate: +5 (cap 95). Each rejected gate: −10 (floor 0 — back to calibration).
-3. Give new models a chance: a newly registered model gets a calibration gate scheduled before its first production need — never shelve it indefinitely. When building the candidate list for a low/medium-risk gate, include at least one model with score < 60 if its taskClass matches, marked as a new-model opportunity.
-4. Give proven models a chance to re-prove themselves: a score goes stale 30 days after its last accepted evidence. After every 10 accepted gates — or when a stale model is needed — the controller schedules one low-risk renewal gate. Passing restores the score; failing applies −10. A stale model may still be dispatched, at a −10 candidate-rating penalty.
-5. Quota exhaustion or unavailability is not a failure: mark cooldown, deduct nothing, and on the model's return offer one low-cost gate to re-establish availability.
-6. All score changes follow the registry write protocol: re-read registryRevision, merge instead of overwriting, increment by exactly 1.
+### Dimensions（维度参照 2026 权威 agent 评测标准）
+
+| 维度 | taskClass | 参照 benchmark | 衡量什么 |
+|---|---|---|---|
+| 前端能力 | frontend-ui | WebArena / OSWorld | UI 实现、页面调试、界面理解 |
+| 后端实现 | backend-integration | SWE-bench Verified / Terminal-Bench | API、服务、部署、脚本、配置 |
+| Agent 协同 | agent-orchestration | τ²-bench / BFCL v4（Agentic） | 拆任务、派子 agent、契约纪律、工具调用正确率 |
+| 修 bug | complex-debugging | SWE-bench Verified / Terminal-Bench | 根因定位、证据链、最小修复 |
+| 架构设计 | architecture-final-review | GAIA（高阶推理） | 系统设计、权衡取舍、文档表达 |
+| 检索与格式化 | retrieval-formatting | GAIA L1 / BrowseComp | 信息提取、格式契约遵守 |
+| 安全与数据 | security-data | 项目内评审 | 密钥处理、数据合规、红线意识 |
+
+注意：2026 年 4 月 Berkeley RDI 已证明主流公开 benchmark 均可被 reward hacking 刷分，因此**本项目只信实战关卡证据**，公开榜单仅作维度参照系，不直接记分。
+
+### Rules
+
+1. `score: 0` in a dimension means uncalibrated **in that dimension**. A 0-score dimension may only receive a calibration gate (bounded, low-risk, automated validation). Production gates require the dimension score ≥ 60.
+2. Passing a dimension's calibration sets that dimension to 60. Each subsequently accepted gate in the same dimension: +5 (cap 95). Rejected: −10 (floor 0 — back to calibration for that dimension only).
+3. Give new models a chance: a newly registered model gets a calibration gate in at least one dimension before its first production need. When building the candidate list for a low/medium-risk gate, include at least one model with score < 60 **in that gate's dimension** if available, marked as a new-model opportunity.
+4. Give proven models a chance to re-prove: a dimension score goes stale 30 days after its last accepted evidence in that dimension. After every 10 accepted gates — or when a stale model is needed — the controller schedules one low-risk renewal gate. Passing restores the score; failing applies −10. Stale models may still be dispatched at a −10 candidate-rating penalty in that dimension.
+5. Quota exhaustion or unavailability is not a failure: mark cooldown (machine-readable `cooldown-until: YYYY-MM-DD`), deduct nothing, and on return offer one low-cost gate to re-establish availability.
+6. Provisional scores: when evidence is still open (e.g. a diagnosis whose final root cause is unconfirmed), record the score with a `暂记` marker and re-judge once the evidence closes. Never treat a provisional score as final.
+7. All score changes follow the registry write protocol: re-read registryRevision, merge instead of overwriting, increment by exactly 1.
 
 ## Manual Relay Mode
 

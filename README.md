@@ -1,177 +1,89 @@
 # Agent 配合（agentpeihe）
 
-多 Agent 协作的关卡（Gate）制度 —— 一次只批一个关卡，执行完汇报，不自动推进。
+多 Agent 协作的关卡（Gate）制度 + omnigent 自动化编排部署 —— 一次只批一个关卡，执行完汇报，不自动推进；模型池、角色、vendor 全部由环境检测自动调配，不手改配置。
 
-## 解决的问题
+## 这个仓库有什么
 
-多个 Agent 协作时常见的问题：
+| 文件 | 内容 |
+|------|------|
+| `SKILL.md` | agentpeihe 协作协议（关卡契约、报告契约、人工中继模式、多维度评分规则） |
+| `gen_controller_bundle.py` | **自动调配生成器**：检测本机 CLI/API key/CC Switch 实际后端/注册表 cooldown，一键生成 omnigent controller bundle——换模型、换大脑、换机器，重跑它就行 |
+| `docs/omnigent-agentpeihe-deploy.md` | 双机部署指南（macOS + Windows WSL2），含 provider 配置、proxy/NO_PROXY 国内外混用、角色化验收 |
+| `docs/PITFALLS.md` | **踩坑实录**：10 个真实坑，每个按「坑→为什么→怎么解→同类怎么避免」组织。下载本项目前建议先读 |
 
-- Agent A 干完活，Agent B 不知道，直接接着干，结果跑偏
-- 没人审查中间结果，错到后面才发现
-- 多个 Agent 同时改文件，冲突了没人管
-- 不确定哪个模型适合干哪个活，每次都从头试
+## 快速开始（omnigent 自动化，Mac 示例）
 
-agentpeihe 用**关卡制度**解决这些问题：每个关卡明确定义能做什么、不能做什么、怎么验证、什么时候停。执行者干完一个关卡必须停下来汇报，由 Controller 审查后再决定下一步。
+> 目标：从 Web UI / CLI 发任务，Controller 自动拆关卡 → 派 Executor → 异 vendor Reviewer 核验 → 汇总，全程无人工复制粘贴。
+
+```bash
+# 1. 装 omnigent（需 Python 3.12+ / Node 22+ / uv / tmux）
+uv tool install --force --python 3.12 "git+https://github.com/professoryu06/omnigent-zh-cn.git"
+
+# 2. 准备执行体（按需，至少有 2 个不同 vendor）
+#    - 订阅 CLI：`claude` / `codex` / `kimi` 登录即可，不要 API key
+#    - API 模型：export DEEPSEEK_API_KEY=...（pi harness 用，需 npm i -g @earendil-works/pi-coding-agent）
+#    - 国内外混用代理：export HTTPS_PROXY=http://127.0.0.1:1082
+#      export NO_PROXY=api.deepseek.com,api.moonshot.cn,localhost,127.0.0.1
+#    - gateway provider 的 key 要进 runner：
+export OMNIGENT_RUNNER_ENV_PASSTHROUGH="DEEPSEEK_API_KEY"
+
+# 3. 配置 provider（API 模型才需要）：~/.omnigent/config.yaml，示例见部署文档第三步
+
+# 4. 生成 controller bundle（自动检测环境，不手改 YAML）
+python3 gen_controller_bundle.py
+#    输出：~/.omnigent/agents/controller/（大脑 + 可用工人池 + vendor 互审规则）
+
+# 5. 注册并启动（必须前台模式带 --agent；改 bundle 后要重启）
+omnigent-zh server --no-open --agent ~/.omnigent/agents/controller
+
+# 6. 浏览器打开 http://localhost:6767，"智能体"区选 controller 发任务
+```
+
+**别踩坑**：上面每一步都对应 `docs/PITFALLS.md` 里一个实测过的坑（agent 不注册不显示、native 大脑不显示名字、headless 审批死锁、model 放错层级、runner 拿不到 key、国内外代理互掐……）。装之前读一遍，省三小时。
 
 ## 角色
 
-| 角色 | 职责 |
-|------|------|
-| **Boss（老板/你）** | 批准每个关卡，解决规则冲突 |
-| **Controller（控制器）** | 制定计划、审查证据、分配模型、更新模型能力注册表 |
-| **Executor（执行者）** | 执行单个关卡，汇报事实后停止，不自行推进 |
-| **Specialist（专家）** | 执行有边界的审查或领域任务，不能悄悄变成 Controller |
+| 角色 | 中文名 | 职责 |
+|------|--------|------|
+| Boss | 主公 | 批准每个关卡，解决规则冲突 |
+| Controller | 诸葛丞相 | 制定计划、审查证据、分配模型、维护评分 |
+| Executor | 关二爷 | 执行单个关卡，汇报后停止 |
+| Reviewer | 法正 | 独立核验，必须与 Executor 不同 vendor |
+| Specialist | 马良 | 有边界的领域任务 |
+
+角色与模型**解耦**：同一份 instructions，生成器按环境把可用模型填进池子；Reviewer 异 vendor 由 Controller 派发时显式自检（按实际后端算，CC Switch 壳按真实 vendor 不按 CLI 名）。
+
+## 多维度模型评分
+
+不信公开榜单（2026 年主流 benchmark 已被证明可刷分），只信实战关卡证据。注册表（`~/.agent-collaboration/model-capability-registry.md`）按 **7 个维度独立记分**（0–100）：
+
+前端 / 后端实现 / Agent 协同 / 修 bug / 架构 / 检索格式化 / 安全数据
+
+规则：0 分维度只能接校准关（过了得 60 基准分）；同维度过关 +5、被拒 −10；30 天无证据过期复证；额度耗尽不扣分记 cooldown；证据未闭环标"暂记"。新模型必给机会，老模型定期复证。详见 `SKILL.md` "Score Calibration and Renewal"。
 
 ## 核心流程
 
 ```
 Boss 提出任务
     ↓
-Controller 读项目规则，定义关卡
+Controller 读项目规则，定义关卡（9 字段契约）
     ↓
 Boss 批准关卡
     ↓
 Executor 执行 → 提交 Gate Execution Report
     ↓
-Controller 审查差异和风险
+Controller 审查差异和风险（Reviewer 异 vendor 独立核验）
     ↓
 指定 Next Owner → 循环或结束
 ```
 
 **关键原则：一次一个关卡，不跳步，不自动推进。**
 
-## 安装
-
-将 `SKILL.md` 放到 Claude Code 的 skills 目录：
-
-```bash
-mkdir -p ~/.claude/skills/agentpeihe
-cp SKILL.md ~/.claude/skills/agentpeihe/
-```
-
-重启 Claude Code 或重新加载会话即可使用。
-
-触发方式：
-- 输入 `/agentpeihe`
-- 或在对话中说「用 agent 配合」
-
-## 关卡契约
-
-每个关卡必须包含以下字段：
-
-```text
-Gate name:        关卡名称
-Goal:             目标
-Allowed actions:  允许的操作
-Forbidden actions: 禁止的操作
-Validation:       验证方式
-Stop conditions:  停止条件
-Expected report format: 期望的报告格式
-Next Owner after completion: 完成后的下一个负责人
-```
-
-## Controller 工作流
-
-1. 审查计划和项目规则
-2. 从共享注册表确认模型能力
-3. 给一个 Executor 分配一个关卡
-4. 审查范围、验证、差异、红线和回滚方案
-5. 拒绝任何未解决的 Critical 或 Important 问题
-6. 更新项目进度；仅在证据被接受后更新注册表
-7. 指定 Next Owner
-
-## Executor 工作流
-
-1. 阅读项目规则和被分配的关卡
-2. 写 Todo 列表
-3. 只执行允许的操作
-4. 遇到未知差异、权限问题、红线或模糊情况立即停止
-5. 汇报操作、结果、差异、遗漏、风险和建议
-6. 指定 Next Owner 并停止
-
 ## 手动中继模式
 
-当 Controller 无法直接调用选定模型，或你希望手动复制提示词时使用。
+Controller 无法直接调用某模型时（只有网页版、只有订阅 UI），走人工中继：Controller 输出推荐模型 + 职责边界 + 资格状态 + `调用方式：人工中继，不声称已实际调用` + 一段自包含可复制提示词，Boss 转贴并带回 `Gate Execution Report` + `Next Handoff Proposal`。缺 API/CLI/路由**不是阻塞**，协议原生支持。详见 `SKILL.md`。
 
-Controller 会输出：
-- 推荐的下一步模型
-- 职责边界
-- 选择理由
-- 能力认证状态
-- **调用方式：人工中继，不声称已实际调用**
-- 一份**可复制提示词**（自包含，可直接贴给另一个 Agent 执行）
-- 返回要求
+## 适用 / 不适用
 
-可复制提示词包含：项目和规则路径、角色、一个关卡、目标、允许/禁止操作、文件范围、验证方式、停止条件、报告格式、Runtime Identity 和 Next Owner。
-
-Executor 执行完后必须返回：
-1. **Gate Execution Report**（按下方模板）
-2. **Next Handoff Proposal**（建议下一步模型和职责，仅建议，需 Controller 批准）
-
-## 执行报告模板
-
-```text
-# Gate Execution Report
-
-## Scope
-- Approved gate:
-- Allowed:
-- Forbidden:
-
-## Todo
-- [x] 已完成
-- [ ] 未完成
-
-## Actions Taken
-- 实际操作（事实陈述）
-
-## Results
-- 命令和观察到的结果
-
-## Differences
-- Whitelisted: 白名单差异
-- Blacklisted: 黑名单差异
-- Unknown: 未知差异
-
-## Not Executed
-- 明确跳过的操作及原因
-
-## Risks / Blockers
-- 当前风险和阻塞
-
-## Recommendation
-- Continue / stop / needs controller audit
-
-## Next Owner
-Current turn: Claude / Executor Agent / Boss / Other / Paused
-Next action: 一个具体动作
-Stop condition: 一个可观察的停止条件
-```
-
-## Next Owner 规则
-
-每次非简短协作回复必须以 Next Owner 结尾，指明下一步由谁做什么。**绝不**用 Next Owner 来授权未经批准的下一关卡。
-
-## 模型能力注册表
-
-agentpeihe 使用共享的模型能力注册表（`~/.agent-collaboration/model-capability-registry.md`）来记录哪些模型在哪些任务类别上经过验证。
-
-核心规则：
-- 缺少精确身份、身份证据或工具配置的模型一律视为 Candidate，无论声誉如何
-- 能力认证只在相同任务类别和同等或更低验证风险下复用
-- Executor 可以提交证据，但不能自己提升自己的认证等级
-- Controller 只在规格合规和代码质量审查通过后更新认证
-
-## 适用场景
-
-- 跨多个 Agent 的复杂任务
-- 需要指定特定模型执行的任务
-- 生产级变更或部署
-- 跨仓库协作
-- 任务所有权不明确的情况
-
-## 不适用场景
-
-- 简单单步任务（直接用普通对话）
-- 纯信息查询
-- 不需要多角色协作的日常开发
+适用：跨多 Agent 的复杂任务、指定模型执行、生产级变更部署、跨仓库协作、ownership 不明。
+不适用：简单单步任务、纯信息查询、日常单人开发。
