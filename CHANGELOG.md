@@ -9,6 +9,7 @@
 - **feat · 通道清乱（另一 agent 执行，Claude 审查通过）**：最终选型定版——丞相=Codex（harness: codex）；DeepSeek 经 CC Switch 套 Claude 壳（exec_deepseek / claude-native，借 Claude 底座）；Kimi 只走 kimi-native（omnigent 默认 `--yolo`，自动派活+手工双路径烟测 PASS）；官方 Anthropic 不进池。生成器同步：嗅探 deepseek 壳→生成 exec_deepseek、禁止 moonshot 占 Claude 壳、跳过同 vendor pi 工人、purge 残留目录。烟测证据：DeepSeek 壳落盘 `deepseek-cc-switch-ok`、Kimi 自动 `kimi-native-auto-ok`、Kimi 手工 `kimi-native-manual-ok`
 - **fix · PITFALLS #5 更正**：kimi-native 并非"无解"——omnigent 默认启动参数含 `--yolo`（`_DEFAULT_KIMI_LAUNCH_ARGS`），此前"kimi 走 CC Switch 套壳"方案作废，改为通道隔离规则（Kimi=kimi-native，禁止占 Claude 壳）
 - **docs · 部署文档新增 §4.3.1 通道隔离表**；交接文档 omnigent-channel-cleanup-handoff-2026-07-22.md + omnigent-kimi-native-tmux-macos-guide-2026-07-22.md 归档
+- **verify · Kimi 手工双路径实测通过**（Boss 确认）：真终端 `omnigent-zh kimi` + 浏览器手选 Kimi 均正常应答；`omnigent-zh kimi` 在伪终端下的 `terminal does not support clear` 为 TERM 环境问题非故障
 
 - **feat · Codex 归队**：额度恢复（Boss 确认，早于原 cooldown-until 2026-07-25），复证关通过（写中位数/极值脚本 + 法正 DeepSeek 独立复核全对），后端维度 0→60
 - **feat · 池子 Codex 锁模型**：`gpt-5.6-sol [high]`（Boss 指定），pin 在 exec_openai 顶层 + 生成器常量 `CODEX_WORKER_MODEL`；注册表身份行同步（CLI 默认的 gpt-5.6-terra 记为另一身份）
