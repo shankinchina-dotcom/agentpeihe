@@ -96,7 +96,13 @@ The executor's proposal never authorizes the next gate. The controller audits id
 
 ## Project Intake Gate（立项关）
 
-When the Boss's message is a project-level task (multi-stage, multi-gate, or a long plan), the controller runs a one-shot intake **before opening the first gate**. Single-step tasks skip it entirely — no ceremony for small work.
+When the Boss's message is a project-level task, the controller runs a one-shot intake **before opening the first gate**. Trigger is judged by three signal tiers, strongest first:
+
+1. **Explicit (always triggers)**: the Boss says "this is a project / run the intake gate / follow the long plan" — a hard button, no judgment needed.
+2. **Artifact (near-always)**: the message attaches a todo list, design doc, requirements list or analysis doc, or references an existing Project Charter or gate IDs ("continue G3").
+3. **Shape (judgment call)**: the task is inherently multi-stage (fix several bugs, deploy multiple machines, build a feature area), spans many turns, or is high-risk (production change, cross-repo, needs red lines and acceptance criteria).
+
+**Skip (negative signal)**: single-step tasks answerable in one action (typo fix, count rows, Q&A, read a file) go straight to the gate flow — no ceremony for small work.
 
 The intake is ONE message with three questions (the Boss answers in one reply — never a questionnaire wall):
 
