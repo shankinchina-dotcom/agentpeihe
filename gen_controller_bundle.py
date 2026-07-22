@@ -42,6 +42,9 @@ PI_PROVIDERS = [
 
 BRAIN_PRIORITY = ["codex", "claude-sdk", "pi"]
 
+# 池子默认 pin 的 Codex 模型（Boss 指定 2026-07-22；None = 跟 codex CLI 默认走）
+CODEX_WORKER_MODEL = "gpt-5.6-sol"
+
 
 def sniff_claude_vendor() -> str:
     """claude CLI 经 CC Switch 时的实际 vendor。"""
@@ -222,12 +225,13 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str]
     # codex 工人（用 headless 形态：codex-native 的 TUI/app-server 线程在本机
     # 实测启动超时两次；harness: codex 走 codex exec 通道，debby 官方示例验证过）
     if det["has_codex"] and "codex current model" not in cd:
-        workers.append(("exec_openai", "codex", "openai", "headless exec 形态"))
+        workers.append(("exec_openai", "codex", "openai", f"headless exec 形态，model={CODEX_WORKER_MODEL or 'CLI默认'}"))
         files["agents/exec_openai/config.yaml"] = worker_yaml(
             "exec_openai",
-            "openai 执行体（Codex CLI，headless exec 形态）。可担任 executor/reviewer。",
+            f"openai 执行体（Codex CLI，headless exec 形态，model={CODEX_WORKER_MODEL or 'CLI默认'}）。可担任 executor/reviewer。",
             "    harness: codex",
             WORKER_PROMPT,
+            executor_extra=f"\n  model: {CODEX_WORKER_MODEL}" if CODEX_WORKER_MODEL else "",
         )
     # pi API 工人
     if det["has_pi"]:
