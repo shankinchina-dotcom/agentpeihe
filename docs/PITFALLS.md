@@ -36,10 +36,11 @@
 - **怎么解决**：子 agent bundle 里配 `executor.config.permission_mode: auto`（polly 官方工人同款；managed settings 下 `bypassPermissions` 可能被禁，`auto` 是允许的最强档）。
 - **同类避免**：**任何 native CLI 进自动化池之前，先确认它的审批模式能 headless 免确认**（codex 用 `yolo: true`）。
 
-### 坑 5：kimi-native 子 agent 同样卡死，且无法可解
-- **为什么遇到**：Kimi CLI 的 TUI 审批提示 omnigent 拦截不了（源码注释明说："the yes/no is answered in the TUI, which Omnigent cannot intercept"）。
-- **怎么解决**：kimi-native 不进自动化池。**kimi 模型的正确接法是 CC Switch 套 claude 壳**（`ANTHROPIC_BASE_URL=https://api.kimi.com/coding/`），既有 K3 的脑子又有 Claude 壳的完整工具协议。
-- **同类避免**：接入新 CLI 前，先查 omnigent 源码里它 harness 的 docstring——审批模型写得很清楚，别等跑起来才发现。
+### 坑 5：kimi-native 子 agent 卡死（已解：omnigent 默认带 `--yolo`）
+
+- **为什么遇到**：Kimi CLI 的 TUI 审批提示 omnigent 拦不了，headless 子 agent 没人点确认 → 死等。第一期据此判了 kimi-native"无解"。
+- **怎么解决（2026-07-22 更正）**：omnigent 启动 kimi-native **默认带 `--yolo`**（源码 `_DEFAULT_KIMI_LAUNCH_ARGS`），审批自动放行——kimi-native 可以进自动化池，自动派活和手工（网页/`omnigent-zh kimi`）两条路径都烟测通过。**正确的隔离规则是：Kimi 只走 kimi-native，禁止经 CC Switch 套 claude 壳**（后者会造成"名 Claude 实 Kimi"的通道混乱）。注意 Host 的 PATH 须含 `~/.kimi-code/bin`。
+- **同类避免**：判"无解"前先查 harness 的默认启动参数；native CLI 的审批问题有两类解——配置免确认（permission_mode/yolo）或换 headless 形态。另外手工 `omnigent-zh run -r` 续 kimi 会话在无 TTY 时会报 `open terminal failed: not a terminal`，那是姿势问题不是 kimi 挂了（用网页或 tmux 注入）。
 
 ### 坑 6：kimi harness 当 Controller 时"伪造"派发记录
 
