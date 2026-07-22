@@ -108,7 +108,7 @@ kimi login    # 如装了 kimi
 ```
 
 - **注意 CC Switch 现实**：`claude` CLI 背后是哪家模型，看 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL`——vendor 判定按实际后端，不按 CLI 名字（生成器会自动嗅探）。
-- **已知无解**：`kimi-native`（kimi CLI 直连形态）会卡在 TUI 审批死等，**不进自动化池**；kimi 模型要走 CC Switch 套 claude 壳。
+- **通道隔离（2026-07-22 定版，务必遵守）**：Kimi 只走 `kimi-native`（omnigent 默认 `--yolo`，自动派活和手工都可用）；**禁止** Kimi 经 CC Switch 套 claude 壳。DeepSeek 才走 claude 壳（CC Switch 指 `api.deepseek.com/anthropic`）。生成器会嗅探 `~/.claude/settings.json` 自动按此配池。
 
 ## 6. 配置 provider（有 API key 的模型才配；订阅 CLI 不用）
 
