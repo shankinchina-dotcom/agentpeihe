@@ -96,6 +96,7 @@ omnigent-zh platform-info
 ```bash
 npm install -g @anthropic-ai/claude-code @openai/codex @earendil-works/pi-coding-agent
 # Kimi Code：curl 安装脚本按其官方文档
+# Grok Build（有 SuperGrok 订阅的话，WSL 里）：curl -fsSL https://x.ai/cli/install.sh | bash && grok login
 ```
 
 逐个登录（在本机独立认证，不复制 Mac 凭据）：

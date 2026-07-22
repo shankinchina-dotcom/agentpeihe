@@ -83,6 +83,7 @@ def detect() -> dict:
         "claude_vendor": sniff_claude_vendor() if shutil.which("claude") else None,
         "has_codex": bool(shutil.which("codex")),
         "has_pi": bool(shutil.which("pi")),
+        "has_grok": bool(shutil.which("grok")),
         "cooldowns": read_cooldowns(),
         "pi_providers": [(p, m, v) for k, p, m, v in PI_PROVIDERS if os.environ.get(k)],
     }
@@ -233,6 +234,16 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str]
             )
     # reviewer 专职说明：不单独生成，Reviewer 由 Controller 从异 vendor 工人里指派
 
+    # Grok Build（ACP 协议，SuperGrok 订阅，自带登录态）
+    if det.get("has_grok"):
+        workers.append(("exec_xai", "acp:grok-build", "xai", "Grok Build CLI，ACP 接入"))
+        files["agents/exec_xai/config.yaml"] = worker_yaml(
+            "exec_xai",
+            "xai 执行体（Grok Build CLI，ACP 协议，SuperGrok 订阅）。可担任 executor/reviewer。",
+            "    harness: acp:grok-build",
+            WORKER_PROMPT,
+        )
+
     # 大脑选择
     if brain is None:
         for b in BRAIN_PRIORITY:
@@ -304,6 +315,21 @@ tools:
     return files, [n for n, _, _, _ in workers], brain
 
 
+def ensure_acp_config(dry_run: bool = False) -> None:
+    """~/.omnigent/config.yaml 缺 acp agents 块时补上（Grok Build 接入的前提）。"""
+    cfg = Path.home() / ".omnigent/config.yaml"
+    block = '\n# ACP 协议接入的执行体（各自管自己的登录态，omnigent 不存凭据）\nacp:\n  agents:\n    - {name: Grok Build, command: grok agent stdio}\n'
+    existing = cfg.read_text() if cfg.exists() else ""
+    if "acp:" in existing and "grok agent stdio" in existing:
+        print("acp 配置块已存在，跳过")
+        return
+    print(f"{'[dry] ' if dry_run else ''}向 {cfg} 追加 acp agents 块")
+    if not dry_run:
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        with cfg.open("a") as f:
+            f.write(block)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--brain", choices=["claude-sdk", "codex", "pi"], default=None)
@@ -319,6 +345,8 @@ def main() -> None:
 
     files, workers, brain = build(det, args.brain)
     print(f"\n== 生成计划 ==\n大脑: {brain}\n工人: {workers}")
+    if det.get("has_grok"):
+        ensure_acp_config(dry_run=args.dry_run)
     out = Path(args.out)
     for rel, content in files.items():
         p = out / rel
