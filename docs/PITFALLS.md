@@ -37,7 +37,6 @@
 - **同类避免**：**任何 native CLI 进自动化池之前，先确认它的审批模式能 headless 免确认**（codex 用 `yolo: true`）。
 
 ### 坑 5：kimi-native 子 agent 同样卡死，且无法可解
-
 - **为什么遇到**：Kimi CLI 的 TUI 审批提示 omnigent 拦截不了（源码注释明说："the yes/no is answered in the TUI, which Omnigent cannot intercept"）。
 - **怎么解决**：kimi-native 不进自动化池。**kimi 模型的正确接法是 CC Switch 套 claude 壳**（`ANTHROPIC_BASE_URL=https://api.kimi.com/coding/`），既有 K3 的脑子又有 Claude 壳的完整工具协议。
 - **同类避免**：接入新 CLI 前，先查 omnigent 源码里它 harness 的 docstring——审批模型写得很清楚，别等跑起来才发现。
@@ -75,6 +74,12 @@
 - **为什么遇到**：host 守护进程 spawn runner 时只转发凭证白名单（`HARNESS_CREDENTIAL_ENV_VARS`：OPENAI/ANTHROPIC/GEMINI 等，**没有 DEEPSEEK_API_KEY**），runner 进程展开 `$DEEPSEEK_API_KEY` 失败。
 - **怎么解决**：`export OMNIGENT_RUNNER_ENV_PASSTHROUGH=DEEPSEEK_API_KEY`，重启 **host daemon + server**（只重启 server 不够）。已写进本仓库快速启动。
 - **同类避免**：`env_passthrough`（进子进程的白名单）和 runner 凭证转发是**两套机制**，gateway 路径的 key 走 models.json（AUTH_COMMAND 烘入），与 env 透传无关。新增 API provider 时三个地方都要想到：config.yaml、runner passthrough、子 agent auth 绑定。
+
+### 坑 11：codex-native 子 agent 报 "Codex app-server never started a thread" 启动超时
+
+- **为什么遇到**：codex-native 形态要在 tmux 里拉起 codex app-server 并等它建会话线程， omnigent 自己的代码注释就写了这条失败链——TUI 可能停在首次运行引导页，无人点确认，30 秒超时。单机 `codex exec` 却完全正常，极具迷惑性。
+- **怎么解决**：工人别用 `codex-native`（TUI 形态），用 **`harness: codex`（headless exec 形态）**——`codex exec` 通道不经过 app-server 线程，debby 官方示例同款，一次通过。
+- **同类避免**：**每个 native CLI 都有"TUI 形态"和"headless 形态"两个 harness**（claude-native/claude-sdk、codex-native/codex、kimi-native/kimi、pi-native/pi）。自动化池的工人优先 headless 形态；TUI 形态只在你确定它的审批/引导能在无人值守下通过时才用。
 
 ---
 
