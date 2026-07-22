@@ -94,10 +94,21 @@ The copyable prompt names the project and rule paths, role, one gate, goal, allo
 
 The executor's proposal never authorizes the next gate. The controller audits identity, scope, evidence, differences, risks and red lines, then approves, rewrites or rejects the proposal. A manual-relay task may run as a Candidate calibration when identity is unresolved, but it cannot create qualification evidence until the Boss confirms the model label shown by the target UI. Do not rename a local subagent to impersonate the selected external model.
 
+## Project Intake Gate（立项关）
+
+When the Boss's message is a project-level task (multi-stage, multi-gate, or a long plan), the controller runs a one-shot intake **before opening the first gate**. Single-step tasks skip it entirely — no ceremony for small work.
+
+The intake is ONE message with three questions (the Boss answers in one reply — never a questionnaire wall):
+
+1. **Plan**: Do you already have a long plan / todo list? (Yes → controller maps it to a gate sequence; No → controller drafts one for Boss confirmation.)
+2. **Casting**: Fully automatic (dimension scores + vendor rules) / semi-pinned (Boss names only the Controller brain or the Reviewer) / fully pinned (Boss names all; controller only validates vendor separation and cooldowns).
+3. **Red lines & acceptance**: What is forbidden, and what counts as done?
+
+Output: a **Project Charter** (draft gate sequence + role assignment + red lines + acceptance criteria). The first gate opens only after the Boss confirms the charter; every later gate cites it as the context anchor.
+
 ## Gate Contract
 
 Every gate contains:
-
 ```text
 Gate name:
 Goal:
