@@ -241,223 +241,45 @@ export ZHIPU_API_KEY="你的 key"
 
 **设计原则：** 所有 agent 使用同一份 agentpeihe 关卡协议 instructions。角色差异仅由 Controller 派发关卡时在消息中指定的 `Role` 字段决定。切换角色只需改 YAML 中的 `harness`/`model`，instructions 不变。
 
-### 4.1 模型池与角色分配
+### 4.1 自动调配：跑生成器，不手改 YAML
 
-可用模型平等列入池中，各自声明 `capable_roles`：
+**设计原则：** 角色与模型解耦，所有工人共用同一份关卡协议 prompt，角色由 Controller 派发时指定。模型池不写死在 YAML 里，而是由 `gen_controller_bundle.py` 按**本机实际环境**生成——换模型、换大脑、换机器，重跑一次脚本即可。
 
-| 模型 ID | Harness | Vendor | 可担任角色 |
-|---------|---------|--------|-----------|
-| claude-opus | claude-native | anthropic | controller, executor, reviewer |
-| claude-sonnet | claude-native | anthropic | executor, reviewer |
-| codex（CLI 默认模型） | codex-native | openai | controller, executor, reviewer |
-| kimi（CLI 默认模型） | kimi-native | moonshot | executor, reviewer |
-| qwen-max | qwen-native | alibaba | executor, reviewer |
-| hermes | hermes-native | hermes | reviewer |
-| deepseek-v4-pro | pi | deepseek | controller, executor, reviewer |
-| grok-4.5 | pi | xai | executor, reviewer |
-| glm-4-plus | pi | zhipu | executor, reviewer |
-
-> "模型 ID" 是派发给 Controller 参考的逻辑名。本地 CLI harness（codex-native / kimi-native / qwen-native / hermes-native）不 pin `model` 时使用各 CLI 自己的默认模型；gateway 模型（pi harness）的 `model` 必须与第三步 config.yaml 中该 provider 的 `models.default` 一致。
-
-### 4.2 Controller Agent YAML
-
-在 `~/.omnigent/agents/controller.yaml` 创建：
-
-```yaml
-name: controller
-instructions: |
-  你是 agentpeihe 协作框架中的 **Controller（控制器）**。
-
-  ## 核心职责
-  1. 接收 Boss 任务，拆解为关卡序列（每个关卡 9 字段完整）
-  2. 从模型池中为每个关卡选择最合适的 Executor
-  3. 派发关卡时指定 Role: executor
-  4. 审查 Gate Execution Report，拒绝不达标报告
-  5. 选择与 Executor 不同 vendor 的 Reviewer 进行核验
-  6. 汇总并向 Boss 报告
-
-  ## 模型池
-  | 模型 ID | Harness | Vendor | 可担任角色 |
-  |---------|---------|--------|-----------|
-  | claude-opus | claude-native | anthropic | controller, executor, reviewer |
-  | claude-sonnet | claude-native | anthropic | executor, reviewer |
-  | codex | codex-native | openai | controller, executor, reviewer |
-  | kimi | kimi-native | moonshot | executor, reviewer |
-  | qwen-max | qwen-native | alibaba | executor, reviewer |
-  | hermes | hermes-native | hermes | reviewer |
-  | deepseek-v4-pro | pi | deepseek | controller, executor, reviewer |
-  | grok-4.5 | pi | xai | executor, reviewer |
-  | glm-4-plus | pi | zhipu | executor, reviewer |
-
-  ## 角色分配规则
-  - Executor 从 capable_roles 包含 executor 的模型中选
-  - Reviewer 从 capable_roles 包含 reviewer 且 vendor ≠ Executor vendor 的模型中选
-  - **vendor 自检（无代码级强制，靠你执行）：** 派发 Reviewer 前，在派发消息中显式写出
-    "Executor vendor = X, Reviewer vendor = Y, X ≠ Y"，不成立则换 Reviewer
-  - 优先参考共享注册表 ~/.agent-collaboration/model-capability-registry.md 的 Scores 表（由你在每次验收后按 +5/−10 规则维护）；
-    如运行环境提供 sys_advise_models 工具，也可调用它获取路由建议
-
-  ## 关卡契约模板（派发时包含，共 9 字段）
-  Role: executor
-  Gate: [关卡名]
-  Goal: [目标]
-  Allowed: [允许的操作]
-  Forbidden: [禁止的操作]
-  Validation: [验收条件]
-  Stop: [停止条件]
-  Report: Gate Execution Report
-  Next Owner: controller
-
-  ## 执行原则
-  - **一次一个关卡，不跳步**
-  - **Executor 报告不满足 Validation = 拒绝 + 说明原因 + 要求重做**
-  - **任何执行 > 1 分钟的任务必须派发**
-  - **每次回复以 Next Owner 结尾**
-  - **不要自己写代码、改文件、执行命令**（你是 Controller，不是 Executor）
-
-executor:
-  harness: claude-sdk
-  # ↑ Controller 必须用非 native harness（如 claude-sdk）：
-  #   omnigent Web UI 把 native harness 的 agent 一律归为"执行器"区
-  #   并按 harness 名显示（你的 agent 会变成第二个 "Claude Code"）；
-  #   只有 SDK/bundle harness 的自定义 agent 才以本名出现在"智能体"区。
-  #   不 pin model：claude-sdk 用已配置 Claude provider 的默认模型。
-  # 换 Controller 只需改这里。例如：
-  # DeepSeek 做 Controller: harness: pi, model: deepseek-v4-pro
-  # Codex 做 Controller:    harness: codex（headless SDK 形态，不 pin model）
-
-# headless 子 agent 无法回答审批提示：deny 灾难性命令（force-push / rm -rf / 等），
-# 其余命令免审批直接放行。与官方 polly/debby 示例同款配置。
-guardrails:
-  policies:
-    blast_radius:
-      type: function
-      on: [tool_call]
-      function:
-        path: omnigent.inner.nessie.policies.blast_radius
-        arguments:
-          gate_pushes: false
-
-tools:
-  claude_agent:
-    type: agent
-    description: Claude Sonnet。vendor=anthropic。可担任 executor/reviewer。
-    instructions: |
-      你是 Executor。执行 Controller 分配的单个关卡。
-      - 严格遵守关卡契约中的 Allowed/Forbidden actions
-      - 完成后按 Gate Execution Report 模板汇报
-      - 不自行推进，等 Controller 审查
-    executor:
-      harness: claude-native
-      model: sonnet
-    os_env: inherit
-    pass_history: true
-
-  codex_agent:
-    type: agent
-    description: Codex。vendor=openai。可担任 executor/reviewer。
-    instructions: |
-      你是 Executor。执行 Controller 分配的单个关卡。[规则同上]
-    executor:
-      harness: codex-native
-      # 不 pin model，用 Codex CLI 默认模型
-    os_env: inherit
-    pass_history: true
-
-  kimi_agent:
-    type: agent
-    description: Kimi。vendor=moonshot。可担任 executor/reviewer。
-    instructions: |
-      你是 Executor。[规则同上]
-    executor:
-      harness: kimi-native
-      # 不 pin model，用 Kimi CLI 默认模型
-    os_env: inherit
-    pass_history: true
-
-  deepseek_agent:
-    type: agent
-    description: DeepSeek Chat。vendor=deepseek。可担任 executor/reviewer。
-    instructions: |
-      你是 Executor。[规则同上]
-    executor:
-      harness: pi
-      model: deepseek-v4-pro
-    os_env: inherit
-    pass_history: true
-
-  qwen_agent:
-    type: agent
-    description: Qwen Max。vendor=alibaba。可担任 executor/reviewer。
-    instructions: |
-      你是 Executor。[规则同上]
-    executor:
-      harness: qwen-native
-    os_env: inherit
-    pass_history: true
-
-  hermes_agent:
-    type: agent
-    description: Hermes。vendor=hermes。仅担任 reviewer。
-    instructions: |
-      你是 Reviewer。独立审查 Executor 产出。
-      - 检查关卡契约中 Validation 是否满足
-      - 发现实际执行 vs 关卡契约的偏差
-      - 提出反例和风险，不自己修改代码
-    executor:
-      harness: hermes-native
-    os_env: inherit
-    pass_history: true
-
-  grok_agent:
-    type: agent
-    description: Grok-3。vendor=xai。可担任 executor/reviewer。
-    instructions: |
-      你是 Executor。[规则同上]
-    executor:
-      harness: pi
-      model: grok-4.5
-    os_env: inherit
-    pass_history: true
-
-  glm_agent:
-    type: agent
-    description: GLM-4-Plus。vendor=zhipu。可担任 executor/reviewer。
-    instructions: |
-      你是 Executor。[规则同上]
-    executor:
-      harness: pi
-      model: glm-4-plus
-    os_env: inherit
-    pass_history: true
+```bash
+python3 gen_controller_bundle.py            # 生成 ~/.omnigent/agents/controller/
+python3 gen_controller_bundle.py --dry-run  # 只看计划不落盘
+python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动择优）
 ```
 
-> **schema 注意（已按 omnigent 实际实现校正）：**
-> - sub-agent tool 上的 `os_env: inherit` 是合法写法；但 **agent 顶层**不能写 `os_env: inherit`（运行时会抛 `NotImplementedError`）。Controller 本身不需要文件系统工具，故顶层不写 `os_env`。
-> - 没有 `terminals:` 配置块——terminal schema 中不存在 `type: tmux` / `directory` 字段，tmux 是 native harness 的隐式实现，无需配置。
+生成器自动做的事：
 
-### 4.3 切换 Controller
+- 检测本机 CLI（claude / codex / kimi / pi / grok）与 API key
+- **嗅探 claude CLI 的真实后端**（读 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL`，CC Switch 壳按实际 vendor 算，不按 CLI 名）
+- 读注册表 `~/.agent-collaboration/model-capability-registry.md` 的 `cooldown-until:`，冷却期模型不出现在工人池
+- 按 harness 特性配好工人参数：claude-native 配 `permission_mode: auto`（headless 免确认）、codex-native 配 `yolo: true`、kimi-native **不生成**（TUI 审批 headless 死等，已知无解）、pi 工人的 `model`/`auth` 放 `executor` 顶层并显式绑定 provider、grok CLI 生成 `acp:grok-build` 工人并补 `~/.omnigent/config.yaml` 的 acp 配置块
+- 生成 Controller prompt：可用池表（含实际 vendor）、异 vendor 互审规则、9 字段契约、中文会话命名规则
 
-```yaml
-# 场景 A：Claude 做 Controller（默认，能力强；SDK 形态才能进 Web UI 智能体区）
-executor:
-  harness: claude-sdk
+### 4.2 第一期实测阵型（供对照）
 
-# 场景 B：DeepSeek 做 Controller（省钱模式）
-executor:
-  harness: pi
-  model: deepseek-v4-pro
+| 组件 | Harness | 实际 Vendor | 说明 |
+|------|---------|------------|------|
+| 大脑 controller | claude-sdk | moonshot（Kimi K3 经 CC Switch） | 大脑必须非 native harness，否则 Web UI 显示成 harness 名 |
+| exec_moonshot | claude-native（permission_mode: auto） | moonshot | executor/reviewer |
+| exec_deepseek | pi（model/auth 顶层 + provider 绑定） | deepseek | executor/reviewer |
+| exec_xai | acp:grok-build | xai | Grok Build CLI，SuperGrok 订阅，executor/reviewer |
+| codex | codex-native | openai | cooldown 至 2026-07-25（额度尽，解封后重跑生成器自动入池） |
+| kimi-native | — | — | **排除**：TUI 审批 omnigent 无法代答，headless 死等 |
 
-# 场景 C：Codex 做 Controller（不 pin model 则用 CLI 默认）
-executor:
-  harness: codex-native
+### 4.3 注册与重载（两个必记动作）
 
-# instructions 完全不变，只改上面两行
-```
+1. **注册**：`omnigent-zh server --no-open --agent ~/.omnigent/agents/controller`（前台模式）。`server start` 后台模式不支持 `--agent`；`~/.omnigent/agents/` 下的文件**不会**被自动注册。
+2. **改后必重启**：server 拿的是启动时的 bundle 快照，改了 bundle 或重跑了生成器，必须重启 server 重新注册，否则跑的还是旧配置。
 
-**验证点：** 在 Web UI 的"智能体"区能看到 **controller** 并创建新会话。注意两个坑（第一期实测踩过）：
-1. `~/.omnigent/agents/*.yaml` **不会**被 server 自动注册——Web UI 的智能体列表走 server 注册表，必须用 `omnigent-zh server --agent ~/.omnigent/agents/controller.yaml`（前台模式）注入；`server start`（后台模式）不支持 `--agent`
-2. Controller 的 harness 必须是非 native（claude-sdk），否则 UI 把它归到"执行器"区显示成第二个 "Claude Code"，找不到名字
+**schema 硬约束（手改时必看，生成器已内置）：**
+- 大脑 harness 用非 native（claude-sdk / codex / pi），才能以本名进 Web UI"智能体"区
+- pi 工人：`model` 和 `auth: {type: provider, name: <provider>}` 必须在 `executor` **顶层**——`executor.config` 是不透明兼容层，spawn 链路不读
+- gateway provider 的 key：`export OMNIGENT_RUNNER_ENV_PASSTHROUGH=<KEY名>`，否则 runner 进程拿不到（`env_passthrough` 是另一套，进子进程的，别搞混）
+- 子 agent 共用 `guardrails.blast_radius`（headless 无法回答审批，灾难性命令 deny、其余放行）
 
 ### 4.4 角色中英文命名
 
@@ -471,26 +293,27 @@ executor:
 | `reviewer` | 法正（御史中丞） | 独立核验，检查风险，提出反例 |
 | `specialist` | 马良 | 领域专家，专项深度审查 |
 
-关卡契约的 `Role` 字段写英文 key，Web UI 和报告显示中文名。
+关卡契约的 `Role` 字段写英文 key，Web UI 和报告显示中文名。**子代理会话命名必须用中文角色名**（Web UI 子代理图谱直接显示它）：`session_name` 格式 `<角色中文名>-<关卡号>-<简述>`，例：`关二爷-G1-统计脚本`、`法正-G2-独立核验`——禁止英文 slug（生成器已写进 Controller prompt）。
 
-### 4.5 模型能力动态评分
+### 4.5 模型能力动态评分（多维度）
 
-评分数据存在共享注册表 `~/.agent-collaboration/model-capability-registry.md` 的 `## Scores` 表（0–100 分），由 Controller 按 agentpeihe skill 的 "Score Calibration and Renewal" 规则维护：
+评分数据存在共享注册表 `~/.agent-collaboration/model-capability-registry.md` 的 `## Scores` 表，**7 个维度独立记分**（0–100）：前端 / 后端实现 / Agent 协同 / 修 bug / 架构 / 检索格式化 / 安全数据（维度参照 2026 权威 agent 评测标准，详见 SKILL.md）。只信实战关卡证据，不信公开榜单。规则（逐维度独立）：
 
-- **0 分 = 未校准**：只能接校准关（一道低风险、可自动验证的小任务），不能派生产关
-- 校准通过 → 基准分 60；之后每通过一个关卡 +5（上限 95），被拒一次 −10（归零要重新校准）
-- **给新模型机会**：新模型入池必排一轮校准；低风险关卡的候选列表里至少要带一个 60 分以下的模型
-- **定期复证**：分数 30 天没有新证据就过期（stale），排一道低风险复证关刷新；过期不扣死分，只是候选评级 −10
-- 没额度/不可用不扣分，标记 cooldown，恢复后给一道低成本关卡证明可用
+- **某维度 0 分 = 该维度未校准**：只能接校准关（低风险、可自动验证），过了拿 60 基准分
+- 同维度过关 +5（上限 95），被拒 −10（归零该维度重新校准）
+- **给新模型机会**：低风险关候选列表里至少带一个该维度 60 分以下的模型
+- **定期复证**：某维度 30 天无新证据即 stale，排低风险复证关刷新；stale 候选评级 −10
+- 没额度/不可用不扣分，标记 `cooldown-until: YYYY-MM-DD`（生成器读它自动摘人），恢复后给低成本关卡复证
+- 证据未闭环的分数标 `暂记`，闭环后重判
 
-当收到项目设计文档时，Controller 输出推荐矩阵（候选评分以注册表 score 为输入之一）：
+当收到项目设计文档时，Controller 输出推荐矩阵（候选评分取对应维度的注册表 score）：
 
 ```
 | 板块 | 推荐 Agent | 模型 | 候选评分 | 评分依据 |
 |------|-----------|------|---------|---------|
-| 架构设计 | 诸葛丞相 | claude-opus | 85 | 复杂推理强项；registry score 72 |
-| 代码实现 | 关二爷 | deepseek-v4-pro | 82 | backend 角色契合；registry score 68 |
-| 安全审查 | 法正 | codex（默认） | 80 | reviewer 角色；vendor ≠ executor |
+| 代码实现 | 关二爷 | deepseek-v4-pro | 82 | 后端维度 70，任务契合 |
+| 故障诊断 | 关二爷 | grok-4.5 | 85 | 修bug维度 65，最高 |
+| 安全审查 | 法正 | 与 executor 异 vendor 中维度最高者 | — | vendor ≠ executor |
 ```
 
 ### 4.6 模型更新触发
@@ -500,8 +323,8 @@ executor:
 1. 搜索该厂商最新模型信息
 2. 确认准确模型名（区分官方名和社区别名）
 3. 旧模型标记 `deprecated`，不出现在推荐中
-4. 新模型以 `Candidate` 等级加入模型池
-5. 更新 Controller agent YAML 中的模型池表
+4. 新模型以 `Candidate` 等级加入注册表（0 分，先过校准关）
+5. **重跑 `gen_controller_bundle.py` 并重启 server**（不要手改 bundle 里的模型池表）
 
 ---
 
