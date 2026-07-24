@@ -6,7 +6,7 @@
 换模型池 = 重跑本脚本，不手改 YAML。
 
 用法:
-  python3 gen_controller_bundle.py [--brain claude-sdk|codex|pi] [--out PATH] [--dry-run]
+  python3 gen_controller_bundle.py [--brain claude-sdk|codex|pi|kimi] [--out PATH] [--dry-run]
 
 规则（Boss 2026-07-22）:
   - 大脑默认优先级: codex → claude-sdk（仅真 anthropic）→ pi
@@ -415,10 +415,14 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
             "（CC Switch 劫持）。请先恢复真 Anthropic，或改用 --brain codex / pi。"
         )
 
+    if brain == "kimi" and not det["has_kimi"]:
+        sys.exit("错误：--brain kimi 但 PATH 无 kimi CLI（装 ~/.kimi-code/bin）")
+
     brain_note = {
         "claude-sdk": "真 Claude（claude-sdk，vendor=anthropic）",
         "codex": "Codex（openai，headless SDK 形态）",
         "pi": f"API 模型（pi harness，{det['pi_providers'][0][1] if det['pi_providers'] else '?'}）",
+        "kimi": "Kimi K3（kimi-native，moonshot，默认 --yolo）",
     }[brain]
 
     pool_rows = "\n".join(
@@ -437,7 +441,8 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
     if pool_notes:
         pool_table += "\n" + "\n".join(pool_notes)
 
-    brain_cfg = f"    harness: {brain}"
+    brain_harness = {"kimi": "kimi-native"}.get(brain, brain)
+    brain_cfg = f"    harness: {brain_harness}"
     if brain == "pi" and det["pi_providers"]:
         # model 必须在 executor 顶层，spawn 才读得到
         # 注意：brain_cfg 只写 config.harness；pi 大脑的 model 放 executor 顶层
@@ -524,7 +529,7 @@ def _purge_stale_agents(out: Path, keep: set[str], dry_run: bool) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--brain", choices=["claude-sdk", "codex", "pi"], default=None)
+    ap.add_argument("--brain", choices=["claude-sdk", "codex", "pi", "kimi"], default=None)
     ap.add_argument("--out", default=str(Path.home() / ".omnigent/agents/controller"))
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
