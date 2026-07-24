@@ -135,7 +135,7 @@ Only one gate may execute per approval. The executor stops after reporting and d
 3. Give one executor one gate.
 4. Audit scope, validation, differences, red lines and rollback.
 5. Reject any open Critical or Important issue.
-6. Update project progress and, only when evidence is accepted, the registry.
+6. Update project progress — make sure the executor's `AGENT_LOG.md` entry is appended (or write it on their behalf) — and, only when evidence is accepted, the registry.
 7. Name Next Owner.
 
 ## Executor Workflow
@@ -146,6 +146,7 @@ Only one gate may execute per approval. The executor stops after reporting and d
 4. Stop on unknown differences, permission problems, red lines or ambiguity.
 5. Report actions, results, differences, omissions, risks and recommendation.
 6. Name Next Owner and stop.
+7. Once the controller accepts the report, append one entry to the project-root `AGENT_LOG.md` following the format defined in that file's header. If the file does not exist, skip — never create it yourself.
 
 ## Report Contract
 
