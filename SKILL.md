@@ -74,6 +74,7 @@ The registry keeps **multi-dimensional 0–100 dispatch scores** per model in it
 5. Quota exhaustion or unavailability is not a failure: mark cooldown (machine-readable `cooldown-until: YYYY-MM-DD`), deduct nothing, and on return offer one low-cost gate to re-establish availability.
 6. Provisional scores: when evidence is still open (e.g. a diagnosis whose final root cause is unconfirmed), record the score with a `暂记` marker and re-judge once the evidence closes. Never treat a provisional score as final.
 7. All score changes follow the registry write protocol: re-read registryRevision, merge instead of overwriting, increment by exactly 1.
+8. Long-horizon scoring: a multi-gate sequence declared at intake as one long-horizon unit (≥3 related gates toward one goal) is scored as a single unit, not per-gate +5. On final acceptance: base +5 plus +2 per additional accepted sub-gate, capped at +15 per unit. While the unit is open the dimension score carries a 暂记 marker and settles once on closure; final rejection applies the standard −10. When agents rotate mid-task (e.g. quota cooldown), each agent is scored only for the sub-gates it actually executed. The unit's controller settles in the agent-orchestration dimension under the same rule.
 
 ## Manual Relay Mode
 
