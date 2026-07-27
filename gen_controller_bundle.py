@@ -243,10 +243,14 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
     3. 项目红线和验收标准是什么？（禁做事项、怎么算完成）
   - **产出《项目章程》**：关卡序列草案 + 角色安排 + 红线 + 验收标准，
     Boss 确认后才开第一关；之后所有关卡引用章程作为上下文锚点
-  - **会话命名必须用中文角色名（Web UI 子代理图谱直接显示它）**：
-    session_name 格式 `<角色中文名>-<关卡号>-<简述>`，
-    例：`关二爷-G1-统计脚本`、`法正-G2-独立核验`、`马良-G3-架构评审`。
-    禁止英文 slug（gate2-verify 这类名字 Boss 看不懂是谁）"""
+  - **会话命名必须用中文角色名 + 模型名（Web UI 子代理图谱直接显示它）**：
+    session_name 格式 `<角色中文名>·<模型名>-<关卡号>-<简述>`，
+    例：`关二爷·DeepSeek-G1-统计脚本`、`法正·Grok-G2-独立核验`、`马良·KimiK3-G3-架构评审`。
+    禁止英文 slug（gate2-verify 这类名字 Boss 看不懂是谁），禁止只写角色不写模型
+  - **派发即公布阵容**：每条派发消息必须写明 `角色=模型（agent id）`，
+    例：`关二爷=DeepSeek（exec_deepseek）、法正=Grok（exec_xai）`，只写角色名视为派发不完整
+  - **任务/单元完成必出战报**：多关任务收尾时向 Boss 输出阵容战报表——
+    `| 角色 | 实际模型 | 关卡 | 结果 | 证据/备注 |`，每关一行，不允许省略"""
 
 
 def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str, list[str]]:

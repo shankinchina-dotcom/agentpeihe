@@ -129,15 +129,32 @@ Next Owner after completion:
 
 Only one gate may execute per approval. The executor stops after reporting and does not continue automatically.
 
+## Cast Visibility（阵容可见性）
+
+Dispatch must be observable to the Boss without reading logs:
+
+1. **At dispatch**: the controller names the actual model for every role, in the dispatch message itself — format `角色=模型（agent id）`, e.g. `关二爷=DeepSeek（exec_deepseek）`、`法正=Grok（exec_xai）`、`马良=Kimi K3（exec_moonshot）`. A dispatch that only names the role is incomplete.
+2. **Session naming** (extends the Chinese-name rule): `<角色中文名>·<模型名>-<关卡号>-<简述>`, e.g. `关二爷·DeepSeek-G1-统计脚本`、`法正·Grok-G2-独立核验`. The model slug is part of the name so the Web UI sub-agent graph shows who is who at a glance.
+3. **At task/unit completion**: the controller closes with a cast-and-outcome table（阵容战报表）, one row per executed gate:
+
+```text
+| 角色 | 实际模型 | 关卡 | 结果 | 证据/备注 |
+|------|----------|------|------|-----------|
+| 关二爷 | DeepSeek | G2-D3-RED/GREEN | PASS（返工 1 次） | 测试 262 项通过 |
+| 法正 | Grok | G2-D3 终审 | PASS | 只读审查无 Critical |
+```
+
+The table accompanies the final report to the Boss; it is not optional for multi-gate tasks.
+
 ## Controller Workflow
 
 1. Review the plan and project rules.
 2. Resolve model qualification from the shared registry.
-3. Give one executor one gate.
+3. Give one executor one gate, naming the cast per Cast Visibility.
 4. Audit scope, validation, differences, red lines and rollback.
 5. Reject any open Critical or Important issue.
 6. Update project progress — make sure the executor's `AGENT_LOG.md` entry is appended (or write it on their behalf) — and, only when evidence is accepted, the registry.
-7. Name Next Owner.
+7. Close multi-gate tasks with the cast-and-outcome table（阵容战报表）, then name Next Owner.
 
 ## Executor Workflow
 
