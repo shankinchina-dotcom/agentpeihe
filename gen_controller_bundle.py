@@ -37,7 +37,7 @@ HERMES_CONFIG = Path.home() / ".hermes/config.yaml"
 
 # pi harness 可接的 API provider：(env key, provider 名, 默认模型, vendor)
 PI_PROVIDERS = [
-    ("DEEPSEEK_API_KEY", "deepseek", "deepseek-v4-pro", "deepseek"),
+    ("DEEPSEEK_API_KEY", "deepseek", "deepseek-v4-flash", "deepseek"),
     ("GROK_API_KEY", "grok", "grok-4.5", "xai"),
     ("ZHIPU_API_KEY", "zhipu", "glm-4-plus", "zhipu"),
     ("DASHSCOPE_API_KEY", "dashscope", "qwen-max", "alibaba"),
