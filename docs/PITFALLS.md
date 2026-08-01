@@ -98,6 +98,18 @@
 - **怎么解决**：`HTTPS_PROXY=http://127.0.0.1:<port>` + `NO_PROXY=api.deepseek.com,api.moonshot.cn,localhost,127.0.0.1`，国外走代理、国内直连。代理变量加"端口活着才生效"的条件式 export，防止代理软件一关全机断网。
 - **同类避免**：WSL2 里 `127.0.0.1` 不是 Windows 的 `127.0.0.1`——mirrored 网络模式或用宿主机 IP，详见部署文档第二步。
 
+### 坑 12：飞书卡片按钮写了 `{tag:"action"}`，schema V2 直接拒收
+
+- **为什么遇到**：卡片 v1 文档里按钮是 `{tag:"action", actions:[...]}` 包装，照搬到 v2（`schema: "2.0"`）后 message API 报 `cards of schema V2 no longer support this cap`（ErrCode 200861，路径 `body -> elements -> [i](tag: action)`）；`action_set`/`form` 也不支持。回复静默 400，看板像死了一样。
+- **怎么解决**：schema V2 的按钮**直放** `body.elements`（`{"tag":"button","text":{...},"type":"primary","value":{...}}`），不要任何包装。拿不准就用最小卡片在真实 API 上二分试：纯 markdown 通过 → 加包装被拒 → 直放通过。
+- **同类避免**：卡片回调 `card.action.trigger` 在控制台「**回调配置**」页，不在「事件订阅」页——查订阅状态时两页都要看（我们就曾只查事件页，误判"未订阅"去白做一轮重注册）。
+
+### 坑 13：守护进程带着 proxy 环境跑，飞书请求被 TLS 劫杀
+
+- **为什么遇到**：macOS 全局 `HTTPS_PROXY=127.0.0.1:1082` 且 `NO_PROXY` 不含 `open.feishu.cn` 时，ClaudeTeam router/sidecar（axios/node 也吃 proxy env）把飞书 API 请求送进 Clash，上游抖动时 `Client network socket disconnected before secure TLS connection was established`——发送失败 → 重试耗尽 → router 崩溃循环 → watchdog 进 600s 冷却，整套系统死亡且难以察觉（我们的一套死了 29 天才发现）。
+- **怎么解决**：守护进程用**净环境**启动（`env -u HTTP_PROXY -u HTTPS_PROXY`），或给 `NO_PROXY` 加 `open.feishu.cn,.feishu.cn`。健康检查 `claudeteam health` 会把"HTTPS_PROXY 无 LARK_CLI_NO_PROXY=1"标成警告——看到就处理，别跳。
+- **同类避免**：omnigent runner 曾中同款（httpx trust_env 读 macOS 系统代理，loopback mint 被劫 503，见 `efe8209`）——**凡是用 httpx/axios 的本地守护进程，loopback 和国内 API 都要显式绕代理**，不能指望环境干净。
+
 ---
 
 ## 五、工程习惯（本次最大的两条元教训）
