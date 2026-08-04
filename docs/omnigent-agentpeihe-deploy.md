@@ -256,7 +256,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 - 检测本机 CLI（claude / codex / kimi / pi / grok）与 API key
 - **嗅探 claude CLI 的真实后端**（读 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL`，CC Switch 壳按实际 vendor 算，不按 CLI 名）
 - 读注册表 `~/.agent-collaboration/model-capability-registry.md` 的 `cooldown-until:`，冷却期模型不出现在工人池
-- 按 harness 特性配好工人参数：claude-native 配 `permission_mode: auto`（headless 免确认）、codex-native 配 `yolo: true`、kimi-native **不生成**（TUI 审批 headless 死等，已知无解）、pi 工人的 `model`/`auth` 放 `executor` 顶层并显式绑定 provider、grok CLI 生成 `acp:grok-build` 工人并补 `~/.omnigent/config.yaml` 的 acp 配置块
+- 按 harness 特性配好工人参数：claude-native 配 `permission_mode: auto`（headless 免确认）、codex-native 配 `yolo: true`、kimi-native 生成 `exec_moonshot`（omnigent 默认 `--yolo` 免审批；角色 prompt 经会话级 AGENTS.md 注入，见 §4.3.2）、pi 工人的 `model`/`auth` 放 `executor` 顶层并显式绑定 provider、grok CLI 生成 `acp:grok-build` 工人并补 `~/.omnigent/config.yaml` 的 acp 配置块（角色 prompt 经 `--agent-profile` 注入，见 §4.3.2）
 - 生成 Controller prompt：可用池表（含实际 vendor）、异 vendor 互审规则、9 字段契约、中文会话命名规则
 
 ### 4.2 第一期实测阵型（供对照）
@@ -276,7 +276,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 2. **改后必重启**：server 拿的是启动时的 bundle 快照，改了 bundle 或重跑了生成器，必须重启 server 重新注册，否则跑的还是旧配置。
 
 **schema 硬约束（手改时必看，生成器已内置）：**
-- 大脑 harness 用非 native（claude-sdk / codex / pi），才能以本名进 Web UI"智能体"区
+- 大脑 harness 用非 native（claude-sdk / codex / pi），才能以本名进 Web UI"智能体"区（2026-08-04 起 kimi-native 大脑已完整可用，见 §4.3.2）
 - pi 工人：`model` 和 `auth: {type: provider, name: <provider>}` 必须在 `executor` **顶层**——`executor.config` 是不透明兼容层，spawn 链路不读
 - gateway provider 的 key：`export OMNIGENT_RUNNER_ENV_PASSTHROUGH=<KEY名>`，否则 runner 进程拿不到（`env_passthrough` 是另一套，进子进程的，别搞混）
 - 子 agent 共用 `guardrails.blast_radius`（headless 无法回答审批，灾难性命令 deny、其余放行）
@@ -295,6 +295,17 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 换池：`python3 agentpeihe/gen_controller_bundle.py --brain codex`，然后重注册 server。
 
 > CC Switch 的后端由 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL` 决定，生成器会嗅探并按真实 vendor 配池。注意 shell 级的 `ANTHROPIC_*` export 会**盖过** settings.json——交互 shell 里残留的 export 必须先 `unset`（或像本机 zshrc 那样只放在函数级 launcher 里）。
+
+### 4.3.2 kimi-native 全功能（2026-08-04 起）
+
+丞相大脑可直接挂 kimi-native（网页：智能体=丞相，执行器=Kimi），与 codex/claude 大脑能力对齐：
+
+- **角色注入**：agent instructions 写入会话级 `$KIMI_CODE_HOME/AGENTS.md`（读全局合并、只写会话 home，全局与 workspace 零污染）。grok 工人走 `--agent-profile`、hermes 工人走 per-session `HERMES_HOME/SOUL.md`，同日接通。
+- **调度通道**：spec 含 `tools.agents`/`spawn` 的 kimi 会话在 launch 前自动起 serve-mcp relay，会话级 `mcp.json` 挂 `mcp__omnigent__*` 工具——丞相可 `sys_session_send` 派全部五个 exec_* 工人（DeepSeek/GPT/Grok/GLM/Kimi），子会话按阵容可见性命名挂侧栏。relay 失败时兜底自动开 kimi swarm 模式（内置 AgentSwarm，同 vendor）。kimi 原生 Agent/AgentSwarm 子代理流程不受影响。
+- **唤醒链**：新增 kimi idle poster（`kimi_native_status`），子代理完成自动唤醒丞相验收；同 workdir 父子会话的 forwarder wire 锁定已修（按 createdAt 就近匹配）。
+- **前提**：kimi 侧走 yolo（全局默认或 `--yolo`），MCP 工具免审批实测通过；非 yolo 模式的审批行为未测。
+
+端到端实证（2026-08-04）：丞相(Kimi) 派 关二爷·Grok 执行 G1 + 法正·DeepSeek 异 vendor 核验 PASS，验收呈军报。相关排障沉淀见 PITFALLS 坑 14/15/16。
 
 ### 4.4 角色中英文命名
 

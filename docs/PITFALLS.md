@@ -110,6 +110,24 @@
 - **怎么解决**：守护进程用**净环境**启动（`env -u HTTP_PROXY -u HTTPS_PROXY`），或给 `NO_PROXY` 加 `open.feishu.cn,.feishu.cn`。健康检查 `claudeteam health` 会把"HTTPS_PROXY 无 LARK_CLI_NO_PROXY=1"标成警告——看到就处理，别跳。
 - **同类避免**：omnigent runner 曾中同款（httpx trust_env 读 macOS 系统代理，loopback mint 被劫 503，见 `efe8209`）——**凡是用 httpx/axios 的本地守护进程，loopback 和国内 API 都要显式绕代理**，不能指望环境干净。
 
+### 坑 14：native harness 的 turn 级 instructions 全被 del，角色 prompt"发了但没到"
+
+- **为什么遇到**：所有 `*_native_executor` 的 `run_turn` 都 `del tools, system_prompt, config`（kimi_native_executor.py:85、hermes_native_executor.py:82 等），runner 侧 kimi/hermes 的终端创建函数还曾 `del agent_spec`。现象极具迷惑性：runner 日志 `GET /agent/contents 200 OK`、spec 明明取到了，但 kimi TUI 拿的是原厂 system prompt——"丞相"零命中，模型把"关二爷"当成自己的昵称亲自下场干活。
+- **怎么解决**：turn 级通道已死，**launch 级投递才是活路**，且每个 CLI 的原生通道不同：kimi = 会话级 `$KIMI_CODE_HOME/AGENTS.md`（读全局合并、解 symlink 写实文件）；claude = `--append-system-prompt`；grok = `--agent-profile <file>.md`（frontmatter 必填 name+description，body append 进默认 system prompt）；hermes = per-session `HERMES_HOME/SOUL.md`（主 identity 槽，只从 HERMES_HOME 读）。2026-08-04 全部接通（agentcenter `ab43288`/`deef41a`）。
+- **同类避免**：审计一条 harness 通道时 launch 路径和 turn 路径都要查——turn 路径的 `del` 是静默丢弃，日志零报错。共享 helper 的隐式契约同理（`post_external_session_status` 用相对 URL，httpx client 必须带 `base_url`——docstring 没写，kimi idle poster 曾因此永远 POST 失败刷警告）。
+
+### 坑 15：父子 kimi 会话同 workdir，forwarder 按 mtime 必锁错 wire
+
+- **为什么遇到**：kimi 会话 home 的 `sessions` 目录是全局 symlink，父子两个 kimi 进程（丞相 + exec_moonshot 工人）同 workdir 时互相可见全部 wire。`_discover_wire` 按「同 workspace + mtime 最新」选——工人 forwarder 启动时丞相的 wire 刚跑完 turn、mtime 最新，于是工人会话镜像了丞相的消息，自己的执行内容全丢，丞相也等不到唤醒。
+- **怎么解决**：加创建时间维度——`state.json` 的 `createdAt ≥ launch−skew` 的候选里取离 launch 最近的（nearest-after-launch）；`state.json` 缺失/损坏才降级 mtime 逻辑。2026-08-04 修复（agentcenter `597fe5c`）。
+- **同类避免**：在共享存储上认领"我的资源"时，mtime 是最差判据（活跃资源的 mtime 永远在动）；创建时间 + 我的启动时刻就近匹配才对。symlink 共享一时爽，发现逻辑必须假设命名空间是混的。
+
+### 坑 16：kimi 没有 turn 完成上报，子代理干完活父会话永远不醒
+
+- **为什么遇到**：omnigent 的「子完成 → 父 inbox → 唤醒」链需要一个生产者 POST `external_session_status: idle`——claude 有 Stop hook、hermes 有 status poster、cursor 有 usage 上报，**kimi 什么都没有**（`KimiNativeExecutor.run_turn` 注入消息即 `TurnComplete`，那只是"粘贴成功"，不等于 kimi turn 真结束）。丞相派完关二爷就永远停在"待回报"，而工人其实早就干完了。
+- **怎么解决**：新增 `kimi_native_status` idle poster——forwarder 从 wire 推导终态（`step.end` 且其区间内无 `tool.call`；新 `turn.prompt` 关闭悬置 turn 兜底），镜像追平后 POST idle，`posted-count` 落盘幂等。2026-08-04 修复（agentcenter `597fe5c`）。
+- **同类避免**：接一条新 harness 时，"消息能进"不等于"事件能出"——turn 完成、审批、错误三类回程事件要逐个点名，缺一个就是断头路。
+
 ---
 
 ## 五、工程习惯（本次最大的两条元教训）
