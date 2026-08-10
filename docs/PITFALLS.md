@@ -138,6 +138,25 @@
   3. 真·Codex 交互终端 = 执行器预设 **`codex-native-ui`**（`codex-native`），与「丞相换大脑」不是同一入口。
   4. 丞相默认 Kimi 走 `kimi-native` TUI，是因为默认 harness 是 **native**；不是「Kimi 特殊、Codex 被降级」。
 
+### 坑 18：Host 连 8000、Server 在 6767 → `runner_disconnected` / Host offline（2026-08-10）
+
+- **为什么遇到**：
+  1. **产品默认端口已是 6767**（`omnigent-zh server`、部署文档、AgentCenter README），但 **`~/.omnigent/config.yaml` 的 `server:` 可能仍写着旧值 `http://localhost:8000`**（早期 setup / FastAPI 习惯 / 部分 Electron·SDK 示例）。`omnigent-zh host` **默认读 config**，不自动对齐当前 UI 端口。
+  2. Server 只负责 Web/API；**真正起 runner 的是 Host**。只开 server、Host 连错地址或 Host 进程被关/睡眠杀死 → UI 报 **`Runner disconnected unexpectedly`**，会话 `failed`，Host **offline**。
+  3. Runner 日志末尾常见 `httpx.ReadError` / `turn cancelled` / `get_client called before start()`——多是 **断线连带**，根因在 Host/Server 链路，不一定是关卡业务代码。
+- **怎么解决**：
+  1. `~/.omnigent/config.yaml` 设 `server: http://127.0.0.1:6767`（与真实监听端口一致）。
+  2. 两进程：`omnigent-zh server --no-open --agent ~/.omnigent/agents/controller`（已在跑可 reuse）+ **常驻** `omnigent-zh host`（或 `omnigent-zh host --server http://127.0.0.1:6767`）。
+  3. 自检：`curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:6767` 与 `grep '^server:' ~/.omnigent/config.yaml` 端口一致；`omnigent-zh host status` 看 host/session。
+  4. 可选本机脚本（非仓库必装）：`~/.local/bin/omni-up`（必要时起 server 再前台挂 host）、`omni-check`（config + HTTP + host 进程）。
+- **同类避免**：改 Server 端口必须 **同时改 config.server**（或 host 显式 `--server`）；Host 终端勿随手关；睡眠后重开 host。侧栏「不活动」子 agent 多为图谱/DB 记录——**无 OS 僵尸进程时不必为内存狂清**；要腾资源则停止/归档父会话。失败父会话建议 **新开** 任务，勿在断链树上硬续。
+
+### 坑 19（观察中）：kimi-native 在 model catalog 呈 `provider kind=none`（与 `~/.kimi` / `~/.kimi-code` 双轨）
+
+- **现象**：本机 Kimi CLI / OAuth / `kimi-code/k3` 正常，编排预检或 `sys_list_models` 仍把 `kimi-native` 工人解成 **`kind=none`**；部分代码/文档仍写 `~/.kimi/config.toml`，Kimi Code 真状态在 **`~/.kimi-code/`**。运行时 TUI 路径多走 `KIMI_CODE_HOME`→`.kimi-code`，与 catalog 解析路径可能不一致。
+- **性质**：属 **Omnigent 引擎集成债**，不是知识库业务仓代码；G0A 只读诊断，**修复须在 monorepo `omnigent-zh-cn`（或上游）做 G0B**，不会因工作区在 `zhishiku/知识库 mvp` 自动同步进 agentcenter。
+- **临时**：禁止用软链当正式方案；G0B 候选：catalog 对 kimi 走 subscription、统一读 `~/.kimi-code`、或派发门闸不对 kimi-native 因 `none` 误杀。状态：**观察中，未合入修复**。
+
 ---
 
 ## 五、工程习惯（本次最大的两条元教训）

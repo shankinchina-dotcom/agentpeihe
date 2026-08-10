@@ -74,14 +74,37 @@ omnigent-zh platform-info
 
 ```bash
 omnigent-zh setup          # 交互式向导：检测本地 CLI、配置 provider、设默认 agent
-omnigent-zh server start   # 后台启动服务器（默认 127.0.0.1:6767）
+# 推荐前台 + controller bundle（AgentCenter 默认路径）
+omnigent-zh server --no-open --agent ~/.omnigent/agents/controller
+# 另开终端：Host 必须常驻（真正起 runner 的是 host，不是 browser）
+omnigent-zh host
 ```
 
-浏览器打开 `http://localhost:6767`，确认 Web UI 正常加载。
+浏览器打开 `http://127.0.0.1:6767`（或 `http://localhost:6767`），确认 Web UI 正常，且本机 Host 为 **online**。
 
-> **注意：** 无参 `omnigent-zh` 是 `run` 的别名——首次运行进入 setup 向导，之后启动默认 agent 并附着**终端 REPL**；它不是启动 Web UI 的命令。验证 Web UI 只需 `server start` + 浏览器。
+**Host 与 Server 必须同一 URL（硬约束）**
 
-**验证点：** `omnigent-zh platform-info` 输出截图 + 浏览器 Web UI 截图。
+| 项 | 正确示例 |
+|----|----------|
+| Server 监听 | 默认 **6767** |
+| `~/.omnigent/config.yaml` | `server: http://127.0.0.1:6767` |
+| Host 连接 | `omnigent-zh host` 读 config；或 `omnigent-zh host --server http://127.0.0.1:6767` |
+
+若 config 仍是旧默认 **`http://localhost:8000`** 而 Server 在 6767：Host 注册到空端口 → UI **Host offline** / 任务中 **`runner_disconnected`**。改端口必须 **config 与 server 双改**。详见 PITFALLS **坑 18**。
+
+自检：
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:6767   # 期望 200
+grep '^server:' ~/.omnigent/config.yaml                          # 端口须为 6767
+omnigent-zh host status                                          # host/session 概览
+```
+
+可选本机助手（非仓库依赖，Boss 机已装示例）：`omni-up`（必要时起 server 再前台 host）、`omni-check`。
+
+> **注意：** 无参 `omnigent-zh` 是 `run` 的别名——首次运行进入 setup 向导，之后启动默认 agent 并附着**终端 REPL**；它不是启动 Web UI 的命令。Web UI = **server + host** + 浏览器。
+
+**验证点：** `omnigent-zh platform-info` + 浏览器 Web UI + Host online。
 
 ---
 
