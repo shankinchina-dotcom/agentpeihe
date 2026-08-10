@@ -345,6 +345,8 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 - 「丞相 + 菜单 Codex」≠ 真·Codex TUI。要原汁原味 Codex 皮肤，新建会话走执行器 **Codex** 预设，不要挂在丞相上改 harness。
 - 2026-08-10 前存在 labels 不跟 harness 走的 bug：改成 Codex 仍 stamp `kimi-native-ui`、把 gpt-5.6-* 塞进 Kimi（PITFALLS 坑 17，已修）。硬刷新前端后以**新建会话**为准。
 
+**Codex 模型策略（Boss 2026-08-10）**：**新项目 / 新会话只用 GPT-5.6 家族**（`gpt-5.6-sol` / `terra` / `luna`）。**禁止** 再派 `gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini` 及各类 5.4-mini 变体（如 `…codexswic…`）——会与 `reasoning_effort=max` 等档位冲突（`unsupported_value`）。池子默认：`gen_controller_bundle` 的 `CODEX_WORKER_MODEL=gpt-5.6-sol`；catalog 静态列表已对齐 5.6。
+
 **GPT-5.6 推理档位**（静态选择器 / `reasoning_effort`，对齐本机 Codex `models_cache.json`）：
 
 | 模型 | 可选 effort | 备注 |
@@ -352,7 +354,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | `gpt-5.6-sol` / `gpt-5.6-terra` | low · medium · high · xhigh · **max** · **ultra** | 与 Codex 客户端「轻度…最大/超高」对应 |
 | `gpt-5.6-luna` | low · medium · high · xhigh · **max** | 目录无 ultra |
 
-网页档位文案目前为英文 id（`max`/`ultra`），与 Codex 繁中 UI（最大/超高）同义不同名。
+网页档位文案目前为英文 id（`max`/`ultra`），与 Codex 繁中 UI（最大/超高）同义不同名。**不要** 把 max 套在 5.4-mini 上。
 
 **验收锚点（Boss 2026-08-10）：** 丞相 + Codex（sol 等）真实任务已跑通——会话 `harness=codex`、终端 `tui:main` = Omnigent REPL、后台 `codex app-server`。
 
