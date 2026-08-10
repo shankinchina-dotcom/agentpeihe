@@ -307,9 +307,48 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 
 端到端实证（2026-08-04）：丞相(Kimi) 派 关二爷·Grok 执行 G1 + 法正·DeepSeek 异 vendor 核验 PASS，验收呈军报。相关排障沉淀见 PITFALLS 坑 14/15/16。
 
+### 4.3.3 丞相换大脑：界面壳对照 + Codex 档位（2026-08-10）
+
+网页新建会话：智能体选 **丞相**，再在「智能体执行器」里切换大脑 harness。三条常见路径**人机界面不同**，编排能力（关卡 / 派 exec_* / 异 vendor）仍是同一套 agentpeihe：
+
+| 网页选择 | harness id | 你看到的界面 | 说明 |
+|----------|------------|--------------|------|
+| 默认 / Kimi | `kimi-native` | **Kimi Code TUI** | bundle 默认大脑；native 通道，直接厂商终端 |
+| 执行器选 **Codex** | `codex` | **Omnigent REPL**（`omnigent attach`） | 大脑 headless/SDK；首启会问 dark/light 主题（仅 REPL 配色，不影响模型） |
+| 执行器列表顶层 **Codex** 预设（非「丞相」） | `codex-native` | **真·Codex TUI** | 单兵写码入口，**不是**丞相编排路径 |
+
+**禁止混淆：**
+
+- 「丞相 + 菜单 Codex」≠ 真·Codex TUI。要原汁原味 Codex 皮肤，新建会话走执行器 **Codex** 预设，不要挂在丞相上改 harness。
+- 2026-08-10 前存在 labels 不跟 harness 走的 bug：改成 Codex 仍 stamp `kimi-native-ui`、把 gpt-5.6-* 塞进 Kimi（PITFALLS 坑 17，已修）。硬刷新前端后以**新建会话**为准。
+
+**GPT-5.6 推理档位**（静态选择器 / `reasoning_effort`，对齐本机 Codex `models_cache.json`）：
+
+| 模型 | 可选 effort | 备注 |
+|------|-------------|------|
+| `gpt-5.6-sol` / `gpt-5.6-terra` | low · medium · high · xhigh · **max** · **ultra** | 与 Codex 客户端「轻度…最大/超高」对应 |
+| `gpt-5.6-luna` | low · medium · high · xhigh · **max** | 目录无 ultra |
+
+网页档位文案目前为英文 id（`max`/`ultra`），与 Codex 繁中 UI（最大/超高）同义不同名。
+
+**验收锚点（Boss 2026-08-10）：** 丞相 + Codex（sol 等）真实任务已跑通——会话 `harness=codex`、终端 `tui:main` = Omnigent REPL、后台 `codex app-server`。
+
+### 4.3.4 关二爷关内多 Agent（Kimi 集群纪律，不 force_swarm）
+
+`exec_moonshot` 等工人 **不会** 被 Omnigent 自动 `/swarm on`。若运行时自带内部多 Agent（如 Kimi AgentSwarm），**允许**在**当前关卡内**使用以加速写码，硬约束写入生成器 `EXECUTOR_PROMPT` 与 `SKILL.md`：
+
+1. 只服务本关；禁止自开下一关、禁止冒充法正/丞相或派其它 `exec_*`
+2. 主 Executor 统一整合；禁止多子 Agent 并发改同一文件
+3. 军报 Results 含 **子 Agent 清单**（未用写「无」）：分工 / 模型 / 范围 / 测试证据
+4. 禁凭据泄露、无关安装升级、commit/push/部署（及关卡 Forbidden）
+5. 本关未过验收 → 不进下一关；绿也只交一份 Report，Next Owner=controller
+6. 子 Agent 无对外角色；失败写入 Risks，禁止静默成功
+
+换 prompt 后须 **`python3 gen_controller_bundle.py`（或带 `--brain …`）并重启 server**，已存活会话不会自动换 prompt。
+
 ### 4.4 角色中英文命名
 
-角色内部用英文 key，显示用中文名（三国主题）。映射关系：
+角色内部用英文 key，显示用中文名（三国主题）。**闭合集合——禁止模型自创**（赵云、马超、张飞等一律不合格；Executor 必须叫「关二爷」）。
 
 | 英文 Key（协议） | 中文显示名 | 角色说明 |
 |-----------------|-----------|---------|
@@ -319,7 +358,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | `reviewer` | 法正（御史中丞） | 独立核验，检查风险，提出反例 |
 | `specialist` | 马良 | 领域专家，专项深度审查 |
 
-关卡契约的 `Role` 字段写英文 key，Web UI 和报告显示中文名。**子代理会话命名必须用中文角色名**（Web UI 子代理图谱直接显示它）：`session_name` 格式 `<角色中文名>-<关卡号>-<简述>`，例：`关二爷-G1-统计脚本`、`法正-G2-独立核验`——禁止英文 slug（生成器已写进 Controller prompt）。
+关卡契约的 `Role` 字段写英文 key，Web UI 和报告显示中文名。**子代理会话命名必须用中文角色名**（Web UI 子代理图谱直接显示它）：`session_name` 格式 `<角色中文名>·<模型名>-<关卡号>-<简述>`，例：`关二爷·DeepSeek-G1-统计脚本`、`法正·Grok-G2-独立核验`——禁止英文 slug、禁止表外中文名（生成器 Controller prompt 已硬写；出现「赵云=」须重写后再派）。
 
 ### 4.5 模型能力动态评分（多维度）
 
@@ -422,7 +461,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | # | 坑 | 正解 |
 |---|---|---|
 | 1 | `~/.omnigent/agents/*.yaml` 不被 server 自动注册，Web UI 看不到自定义 agent | 前台模式 `omnigent-zh server --agent <bundle目录>` 注入；改 bundle 后必须重启重新注册 |
-| 2 | 自定义 agent 用 native harness（claude-native 等）会出现在"执行器"区并显示成 harness 名，找不到名字 | Controller 大脑必须用非 native harness（claude-sdk/codex/pi），才能以本名进"智能体"区 |
+| 2 | 自定义 agent 用 native harness（claude-native 等）会出现在"执行器"区并显示成 harness 名，找不到名字 | 显示名靠前端预设名守卫（controller 即使 kimi-native 仍显示「丞相」）。**人机壳**见 §4.3.3：kimi-native→Kimi TUI，大脑 `codex`→Omnigent REPL，真·Codex TUI 走执行器预设。labels 必须跟 harness 覆盖（坑 17） |
 | 3 | headless 子 agent 被 Claude Code 权限弹窗卡死 | 子 agent bundle 配 `executor.config.permission_mode: auto`（polly 同款） |
 | 4 | kimi 经 CC Switch 套 claude 壳导致通道混乱；或 kimi-native 被 TUI 审批卡住 | **禁止 Kimi 占 Claude 壳**；Kimi 只走 `kimi-native`（手工 `omnigent-zh kimi` / 自动 `exec_moonshot`）。Omnigent 默认 `--yolo` 可自动派活；Host PATH 须含 `~/.kimi-code/bin` |
 | 5 | pi 子 agent 报 "No API key found"：`model` 写在 `executor.config` 里被静默忽略 | `model` 必须在 `executor` 顶层；另需 `executor.auth: {type: provider, name: <config.yaml 里的 provider 名>}` 显式绑定 |

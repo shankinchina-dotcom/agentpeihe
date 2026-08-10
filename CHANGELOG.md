@@ -4,6 +4,13 @@
 
 ---
 
+## 2026-08-10
+
+- **docs · PITFALLS 坑 17**：丞相网页改 Codex 时 labels 仍 stamp kimi-native-ui → 错起 Kimi + 模型 id 串台（与 agentcenter 前端 labels 跟 effective harness 修复同步）；并写清大脑壳对照（kimi-native / codex / codex-native）。
+- **docs · 部署文档 §4.3.3**：丞相换大脑界面对照表 + GPT-5.6 推理档位（sol/terra 含 max/ultra）+ Boss 真实任务验收锚点。
+- **feat · 关二爷关内多 Agent 纪律（prompt only，不 force_swarm）**：`gen_controller_bundle.py` 的 `EXECUTOR_PROMPT` + Controller 验收提示；`SKILL.md` Executor 节与军报 Results「子 Agent 清单」；部署 §4.3.4。允许 Kimi 等在本关内用内部集群加速，禁止破协作边界。
+- **fix · 角色表闭合（禁自创赵云等）**：Controller prompt 固定 主公/诸葛丞相/关二爷/法正/马良；派发写「赵云=」等视为不合格须重写；`SKILL.md` Roles + Cast Visibility、部署 §4.4 同步。
+
 ## 2026-08-04
 
 - **docs · PITFALLS 新增坑 14/15/16**：native harness 的 turn 级 instructions 全被 del（launch 级投递才是活路：kimi=会话级 AGENTS.md、grok=--agent-profile、hermes=SOUL.md、claude=--append-system-prompt）；父子 kimi 会话同 workdir 时 forwarder 按 mtime 必锁错 wire（改 createdAt nearest-after-launch）；kimi 无 turn 完成上报致父子唤醒链断头（新增 kimi_native_status idle poster）。随 agentcenter `ab43288`/`597fe5c`/`deef41a` 端到端实测落地。

@@ -128,6 +128,16 @@
 - **怎么解决**：新增 `kimi_native_status` idle poster——forwarder 从 wire 推导终态（`step.end` 且其区间内无 `tool.call`；新 `turn.prompt` 关闭悬置 turn 兜底），镜像追平后 POST idle，`posted-count` 落盘幂等。2026-08-04 修复（agentcenter `597fe5c`）。
 - **同类避免**：接一条新 harness 时，"消息能进"不等于"事件能出"——turn 完成、审批、错误三类回程事件要逐个点名，缺一个就是断头路。
 
+### 坑 17：丞相网页改 Codex，终端仍是 Kimi + 模型 id 被塞进错误 CLI（2026-08-10 已修）
+
+- **为什么遇到**：G6/G7 让**模型列表**跟随 effective harness（`pickedHarness`），但 `POST /v1/sessions` 的 `labels`（`omnigent.ui` / `omnigent.wrapper`）仍按 **agent 默认 harness**（controller 默认 `kimi-native`）调用 `nativeWrapperLabelsForAgent`。结果：`harness_override=codex`、`model_override=gpt-5.6-terra` 已进会话，但 labels 仍是 `kimi-native-ui` → UI/ensure 路径起 Kimi TUI → Kimi 用 `-m gpt-5.6-terra` → 红字 `Model "gpt-5.6-terra" is not configured in config.toml`。侧栏标题也像「Kimi」。
+- **怎么解决**：`handleCreate` 写 labels 与能力 knobs 时与 model_override 同源——一律用 effective harness（`pickedHarness ?? agent.harness`）。覆盖成非 native 的 `codex` 时不再 stamp kimi wrapper，runner 走 Omnigent REPL（`omnigent attach`）。默认不覆盖时仍 stamp kimi-native-ui。前端 flow 测试覆盖两种路径。
+- **同类避免 / 产品语义**：
+  1. 创建会话 body 里 **harness_override、model_override、labels、terminal_launch_args 必须同一套 effective harness**，任何一处只读 agent 默认都会串台。
+  2. 菜单「Codex」对丞相 = 大脑 harness **`codex`（headless/SDK）** → 人机界面是 **Omnigent REPL**（首启可选 dark/light 主题，正常）；**不是** 真·Codex TUI。
+  3. 真·Codex 交互终端 = 执行器预设 **`codex-native-ui`**（`codex-native`），与「丞相换大脑」不是同一入口。
+  4. 丞相默认 Kimi 走 `kimi-native` TUI，是因为默认 harness 是 **native**；不是「Kimi 特殊、Codex 被降级」。
+
 ---
 
 ## 五、工程习惯（本次最大的两条元教训）

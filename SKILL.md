@@ -23,10 +23,17 @@ Before planning or execution:
 
 ## Roles
 
-- Owner / Boss: approves gates and resolves rule conflicts.
-- Controller Agent: plans, audits evidence, assigns qualified models and updates the registry.
-- Executor Agent: executes one approved gate, reports facts and stops.
-- Specialist Agent: performs a bounded review or domain task; it cannot silently become controller.
+Closed set only — **do not invent extra Three Kingdoms names** (e.g. 赵云, 马超, 张飞) in dispatch, session titles, or cast tables.
+
+| English key | 中文显示名 | Responsibility |
+|-------------|------------|----------------|
+| boss | 主公 | Approves gates; resolves rule conflicts |
+| controller | 诸葛丞相 | Plans, audits evidence, assigns models, updates registry |
+| executor | 关二爷 | Executes one approved gate; reports and stops |
+| reviewer | 法正 | Independent verification; must be a different vendor from the executor |
+| specialist | 马良 | Bounded domain review; cannot silently become controller |
+
+Dispatch format must use these 中文名 only, e.g. `关二爷=DeepSeek（exec_deepseek）` — never `赵云=…`.
 
 ## Model Capability Registry
 
@@ -133,8 +140,8 @@ Only one gate may execute per approval. The executor stops after reporting and d
 
 Dispatch must be observable to the Boss without reading logs:
 
-1. **At dispatch**: the controller names the actual model for every role, in the dispatch message itself — format `角色=模型（agent id）`, e.g. `关二爷=DeepSeek（exec_deepseek）`、`法正=Grok（exec_xai）`、`马良=Kimi K3（exec_moonshot）`. A dispatch that only names the role is incomplete.
-2. **Session naming** (extends the Chinese-name rule): `<角色中文名>·<模型名>-<关卡号>-<简述>`, e.g. `关二爷·DeepSeek-G1-统计脚本`、`法正·Grok-G2-独立核验`. The model slug is part of the name so the Web UI sub-agent graph shows who is who at a glance.
+1. **At dispatch**: the controller names the actual model for every role, in the dispatch message itself — format `角色=模型（agent id）`, e.g. `关二爷=DeepSeek（exec_deepseek）`、`法正=Grok（exec_xai）`、`马良=Kimi K3（exec_moonshot）`. A dispatch that only names the role is incomplete. **Invented role names (赵云, etc.) make the dispatch invalid** — rewrite before `sys_session_send`.
+2. **Session naming** (extends the Chinese-name rule): `<角色中文名>·<模型名>-<关卡号>-<简述>`, e.g. `关二爷·DeepSeek-G1-统计脚本`、`法正·Grok-G2-独立核验`. The model slug is part of the name so the Web UI sub-agent graph shows who is who at a glance. Role segment must be from the closed Roles table only.
 3. **At task/unit completion**: the controller closes with a cast-and-outcome table（阵容战报表）, one row per executed gate:
 
 ```text
@@ -163,8 +170,21 @@ The table accompanies the final report to the Boss; it is not optional for multi
 3. Execute only allowed actions.
 4. Stop on unknown differences, permission problems, red lines or ambiguity.
 5. Report actions, results, differences, omissions, risks and recommendation.
-6. Name Next Owner and stop.
+6. Name Next Owner and stop（Next Owner must be the controller; never open the next gate yourself）.
 7. Once the controller accepts the report, append one entry to the project-root `AGENT_LOG.md` following the format defined in that file's header. If the file does not exist, skip — never create it yourself.
+
+### Within-gate multi-agent（关内多 Agent / 集群）
+
+If the runtime has internal multi-agent or swarm-style helpers (e.g. Kimi AgentSwarm), the executor **may** use them to accelerate **this gate only**. Omnigent does **not** force-enable swarm for workers.
+
+Hard rules:
+
+1. Internal agents serve **only the current gate**. No next-gate plans, no impersonating Controller/Reviewer, no dispatching other `exec_*` workers.
+2. The **main executor integrates** all work. No concurrent edits to the same file by multiple internal agents.
+3. Under **Results**, include a **子 Agent 清单** (or `无` if none): role split / model (best-effort; `unknown` if unavailable) / paths touched / test evidence.
+4. Red lines still apply: no leaking secrets, no unrelated install/upgrade, no commit/push/deploy unless the gate Allowed actions explicitly say so.
+5. Failed validation or unaccepted report → do not proceed to any next gate.
+6. Internal agents have **no external role** and no Next Owner. Their failures are folded into Risks / Not Executed by the main executor — never silent success.
 
 ## Report Contract
 
@@ -185,6 +205,8 @@ The table accompanies the final report to the Boss; it is not optional for multi
 
 ## Results
 - commands and observed results
+- 子 Agent 清单（未使用写「无」）:
+  | 分工 | 实际模型 | 修改路径/范围 | 测试证据 |
 
 ## Differences
 - Whitelisted:
