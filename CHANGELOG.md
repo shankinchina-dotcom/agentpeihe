@@ -11,6 +11,7 @@
 - **feat · 关二爷关内多 Agent 纪律（prompt only，不 force_swarm）**：`gen_controller_bundle.py` 的 `EXECUTOR_PROMPT` + Controller 验收提示；`SKILL.md` Executor 节与军报 Results「子 Agent 清单」；部署 §4.3.4。允许 Kimi 等在本关内用内部集群加速，禁止破协作边界。
 - **fix · 角色表闭合（禁自创赵云等）**：Controller prompt 固定 主公/诸葛丞相/关二爷/法正/马良；派发写「赵云=」等视为不合格须重写；`SKILL.md` Roles + Cast Visibility、部署 §4.4 同步。
 - **docs · PITFALLS 坑 18/19 + 部署 §1.3**：Host/Server URL 与 6767 对齐纪律、`runner_disconnected` 根因；kimi catalog `kind=none` 观察项；双进程启动与自检命令。
+- **docs · 坑 19 闭合（引擎 G0B）**：monorepo `model_catalog` 已将 kimi-native 读为 subscription（见 agentcenter CHANGELOG 同日）；部署/编排侧仍须重启 runner。
 
 ## 2026-08-04
 

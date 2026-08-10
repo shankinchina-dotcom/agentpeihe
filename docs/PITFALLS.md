@@ -151,11 +151,13 @@
   4. 可选本机脚本（非仓库必装）：`~/.local/bin/omni-up`（必要时起 server 再前台挂 host）、`omni-check`（config + HTTP + host 进程）。
 - **同类避免**：改 Server 端口必须 **同时改 config.server**（或 host 显式 `--server`）；Host 终端勿随手关；睡眠后重开 host。侧栏「不活动」子 agent 多为图谱/DB 记录——**无 OS 僵尸进程时不必为内存狂清**；要腾资源则停止/归档父会话。失败父会话建议 **新开** 任务，勿在断链树上硬续。
 
-### 坑 19（观察中）：kimi-native 在 model catalog 呈 `provider kind=none`（与 `~/.kimi` / `~/.kimi-code` 双轨）
+### 坑 19：kimi-native 在 model catalog 呈 `provider kind=none`（2026-08-10 已修 catalog 读数）
 
-- **现象**：本机 Kimi CLI / OAuth / `kimi-code/k3` 正常，编排预检或 `sys_list_models` 仍把 `kimi-native` 工人解成 **`kind=none`**；部分代码/文档仍写 `~/.kimi/config.toml`，Kimi Code 真状态在 **`~/.kimi-code/`**。运行时 TUI 路径多走 `KIMI_CODE_HOME`→`.kimi-code`，与 catalog 解析路径可能不一致。
-- **性质**：属 **Omnigent 引擎集成债**，不是知识库业务仓代码；G0A 只读诊断，**修复须在 monorepo `omnigent-zh-cn`（或上游）做 G0B**，不会因工作区在 `zhishiku/知识库 mvp` 自动同步进 agentcenter。
-- **临时**：禁止用软链当正式方案；G0B 候选：catalog 对 kimi 走 subscription、统一读 `~/.kimi-code`、或派发门闸不对 kimi-native 因 `none` 误杀。状态：**观察中，未合入修复**。
+- **现象**：本机 Kimi CLI / OAuth / `kimi-code/k3` 正常，编排预检或 `sys_list_models` 仍把 `kimi-native` 工人解成 **`kind=none`**，note 含 **`dispatches to this worker cannot run here`**，导致 Controller 不敢派 `exec_moonshot`。
+- **根因（G0A）**：`_HARNESS_FAMILY` 故意不含 kimi（无 per-spawn provider 注入）；legacy 无 kimi 分支 → `no model provider configured`。**spawn 并不依赖 catalog**（无 `args.model` 走 CLI `default_model`；kind=none 对 model override 透传）——是 **读数/文案误杀**，不是死 worker。真配置家目录是 **`~/.kimi-code`**，不是 `~/.kimi`。
+- **怎么解决（G0B，agentcenter monorepo）**：`model_catalog` 对 `harness_type==kimi`：PATH 有 `kimi` → `kind=subscription` + `cli=kimi` + 静态列表（`kimi-code/k3` 等正确前缀）；无 CLI → none 且 note 说明装 Kimi Code / `~/.kimi-code`，**不再**用「cannot run here」口号。测试见 `test_kimi_native_*`。
+- **生效**：改的是 Python 包；**需重启 runner（及必要时 server）** 才加载新 catalog。知识库任务侧改文件不会进 monorepo 记录。
+- **仍非目标**：软链 `~/.kimi`；在业务仓修引擎；canary 资格自动写 registry。
 
 ---
 
