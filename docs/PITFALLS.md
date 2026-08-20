@@ -240,11 +240,12 @@
 - **怎么解决**：`tmux -S <sock> send-keys Up Enter` 选 "Trust this folder" 即放行；信任按目录记忆，同目录后续会话不再弹。批量/自动化场景：**先把目标目录跑一次手工 kimi 完成信任**，或复用已信任目录。
 - **同类避免**：任何 native CLI 被引向**新 workdir** 前，先想"它在这个目录的第一次启动有没有引导页"——信任页、登录页、升级提示都是无人值守杀手（坑 24 的 `/login` 是同款）。排查顺序：先 `capture-pane` 看 TUI 实况，再查日志。
 
-### 坑 29：纯 API 创建的 kimi-native 顶层会话，首轮消息注入 stalled（根因未定位）
+### 坑 29：纯 API 创建的 kimi-native 顶层会话，首轮消息注入 stalled（2026-08-20 根因已定位）
 
-- **为什么遇到**：2026-08-20 金丝雀中，`POST /v1/sessions`（agent=controller，spec 默认 harness=kimi-native，无 labels）创建的会话：runner 日志显示 terminal+forwarder 已建（`Auto-created kimi terminal + forwarder`）、消息已转换（`_convert_raw_items_to_input: 1→1`），**随后静默**——TUI 停在 "No session yet"，注入永不发生，无报错。同 stack 上 UI 手工创建的 kimi-native 会话（生产「继续任务」）工作正常，差异点疑似在 API 创建路径的 labels/首轮注入触发条件。**根因未定位，先记症状与证据**（runner 日志止于 items 转换；`inject_user_message` 是 tmux 粘贴路径，理论上不需要 wire 存在；坑 24 的 K3 盒线就绪检测疑似相关）。
-- **怎么解决**：绕开——Controller 大脑改用 pi（或 claude-sdk）等 headless harness 后 API 路径一次跑通；kimi-native 大脑继续走 UI 手工创建（生产已验证）。要根治需查 runner 首轮注入的触发条件（`inner/kimi_native_executor.py:run_turn` 之前的那段调度），修在嵌套副本。
-- **同类避免**：「能建会话」≠「能跑 turn」≠「消息能到 TUI」——接一条 harness 要逐段验收（坑 16 同款教训：消息能进不等于事件能出）。自动化链路创建会话后，**前两分钟盯一眼 TUI 画面或 items 流**，沉默即异常。
+- **为什么遇到**：2026-08-20 金丝雀中，`POST /v1/sessions`（agent=controller，harness=kimi-native）创建的会话：runner 日志显示 terminal+forwarder 已建、消息已转换（`_convert_raw_items_to_input: 1→1`），**随后静默**——TUI 停在 "No session yet"，注入永不发生，无报错。先怀疑过就绪检测，实测 `_pane_ready_for_paste` 对现场 pane 返回 True，排除。
+- **根因**：runner 的崩溃恢复保护 `omnigent/runner/app.py:9906`——`if history and not is_native_harness(harness_name)` 才从「尾部 user 消息」自动 kickoff 首轮。native 会话被**故意跳过**（注释：native 尾部 user 消息可能是已失败 turn 的残留，不能盲目重放）。于是「create + initial_items」对 native harness = 消息在、turn 永不启动。UI 从不踩它，是因为 **UI 的流程是两步**：先 `POST /v1/sessions`（不带 initial_items）建空会话，首条消息经 composer 走 `POST /events`——`/events` 路径不受该保护约束，正常起跑。
+- **怎么解决**：API 自动化**先建后发**——create 时不带 `initial_items`，会话建成（terminal+forwarder 就绪，约 10s）后再把首条消息 POST 到 `/v1/sessions/{id}/events`。已实测：harness_override=kimi-native + 此顺序 → turn 正常执行并回包。要根治可改核心（区分「全新会话首条消息」与「崩溃恢复重放」），暂不动——UI 路径无此坑。
+- **同类避免**：「能建会话」≠「能跑 turn」≠「消息能到 TUI」——接一条 harness 要逐段验收（坑 16 同款教训：消息能进不等于事件能出）。读恢复保护类代码时，**每个 `not` 分支都要问一句"合法新流量会不会被误伤"**。
 
 ### 坑 30：Codex 配额冻结（usageLimitExceeded），Controller 大脑全线瘫痪
 
