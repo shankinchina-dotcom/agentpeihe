@@ -10,6 +10,7 @@
 - **score · Codex 注册表 cooldown**：`Codex current model` 标 `cooldown-until: 2026-09-12`（usageLimitExceeded 实锤，额度耗尽不扣分）；registryRevision 35→36。
 - **ops · 大脑临时切 pi**：codex cooldown 期间 `--brain pi`（deepseek API，headless 全工具桥）；codex 恢复后重跑生成器（不带 `--brain`）回默认优先级。
 - **feat · 丞相大脑统一菜单（omnigent 前端一处补丁）**：`web/src/lib/agentLabels.ts` 的 `BRAIN_HARNESS_LABELS` 增加 `kimi-native`——丞相仍只有一个入口，大脑菜单内直接可选 Kimi（K3 TUI）/Codex/Pi 等；override→kimi-native 链路端到端实测通过（建空会话 + 首消息走 `/events` → turn 正常回包）。**同日取代**下方的「大脑变体 bundle」方案（变体已从生成器回退、已部署的 controller-k3 已清退）——变体改的是智能体清单，统一菜单改的是一行前端映射，后者才是 Boss 要的形态。
+- **fix · 坑 31 harness_override 半拉子生效（omnigent runner 核心修复）**：override 到 kimi-native 的会话 turn 被 spec 默认大脑接走（TUI 空白、页面照跑）——runner `_session_harness_name` 只从 spec 反解。修复 = 会话级 override 缓存（create 时写入、turn 派发兜底、销毁清理）；回归测试 `tests/runner/test_session_harness_override.py` 3 项正反对照。改在嵌套副本 runner，新会话自动生效（runner 按会话新拉进程）。
 - **fix · 坑 29 根因定位**：native 会话「create + initial_items」不自动起跑——runner 崩溃恢复保护（`runner/app.py:9906` 的 `is_native_harness` 分支）跳过首轮 kickoff；API 自动化绕法 = 先建空会话、首消息走 `/events`（UI 天然两步走，从未踩坑）。
 - **~~feat · 大脑变体 bundle~~（同日被统一菜单方案取代，代码已回退）**：为每个可用大脑生成 `controller-<k3|...>` 变体 bundle 的思路保留在 git 历史（548b16d），如未来需要「同智能体不同提示词」变体可参考。
 - **docs · PITFALLS 坑 28/29/30**：kimi 新目录信任引导卡死；纯 API 创建 kimi-native 顶层会话首轮注入 stalled（根因未定位，先记症状与绕法）；codex 配额冻结的「先记 cooldown 再换脑」处置流程。

@@ -255,3 +255,9 @@
   2. `python3 gen_controller_bundle.py --brain kimi|pi` 换脑重生成 + 重启 server（坑 1：重启才重新注册）；
   3. 大脑恢复后重跑生成器（不带 `--brain`）回到默认优先级。
 - **同类避免**：配额死不等于模型死，**先记 cooldown 再换脑**，别让生成器下次又把死脑选回来（cooldown 不进 prompt，只影响生成期选择，见坑 27 的设计文档）。排班预设接管人（注册表 2026-07-31 已有同款教训：连续两轮额度尽死于 runner_disconnected）。
+
+### 坑 31：harness_override 只管住了终端，没管住 turn——Kimi 丞相的 TUI 空白、消息被 pi 接走
+
+- **为什么遇到**：2026-08-20 统一菜单上线后，Boss 建「丞相 → Kimi（K3 TUI）」会话：kimi TUI 正常拉起（labels 认 override），但消息始终不进 TUI——页面聊天在动、终端定格 "No session yet"。runner 日志实锤：`harness for conversation ... changed 'kimi-native' -> 'pi'; respawning`。两处叠加：① server 的 native 消息转发事件只带 `harness` 提示、不带 `harness_override`（`_build_native_terminal_message_event`，注释明说这个提示在 turn 路径被忽略）；② runner 的 `_session_harness_name` 只从 spec 反解 harness，`_is_native_harness` 随之误判成非 native → 走 executor 路径 → process manager 把 kimi-native 子进程重生成 pi。坑 17 修好了 create/labels 一路，turn 这一路的解析点没跟着认 override。极具迷惑性：会话一切"正常"，只是大脑悄悄换了人。
+- **怎么解决**：runner 侧新增 `_session_harness_overrides` 会话级缓存——create-notify 解析出 override 时写入、turn 派发兜底读取（msg_body 带新值则刷新）、会话销毁时随 spec 缓存一并清理（`runner/app.py`，agentcenter `6f9ff11` 之后的修复提交）。回归测试 `tests/runner/test_session_harness_override.py` 3 项（正反对照：撤掉修复必挂）。活体验证：修复后新建 K3 会话，kimi TUI 真实收到并回复消息，runner 日志再无 pi 串台。
+- **同类避免**：坑 17 的「同一套 effective harness」清单要再加一条——**runner 侧每一处 harness 反解点都要认 override**（spawn、turn 派发、native 检测、model 路由……）。改这类代码先全局搜 harness 解析点，只修 create 一处 = 埋雷。另外验收「换脑」类功能时别只看回复有没有——**要验回复是从哪个大脑出来的**（看 TUI 实况 / runner 日志的 harness 名，不看页面叙事）。
