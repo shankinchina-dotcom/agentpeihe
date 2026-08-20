@@ -9,6 +9,7 @@
 - **ops · 会话池 + Prompt 编译器上线并过金丝雀**：重跑生成器 + 重启 server 完成注册；三关连跑金丝雀（/tmp/ap_canary，G1→G2→G3 派 exec_deepseek）实测全过——Executor 子会话全程仅 1 个（稳定名「关二爷·DeepSeek」），首派 initial 编译含固定头、第 2/3 派 followup 只含契约段，法正（exec_xai）首条消息零执行者军报字段，战报表收尾；12 项 unittest 独立复跑全绿。
 - **score · Codex 注册表 cooldown**：`Codex current model` 标 `cooldown-until: 2026-09-12`（usageLimitExceeded 实锤，额度耗尽不扣分）；registryRevision 35→36。
 - **ops · 大脑临时切 pi**：codex cooldown 期间 `--brain pi`（deepseek API，headless 全工具桥）；codex 恢复后重跑生成器（不带 `--brain`）回默认优先级。
+- **feat · 大脑变体 bundle**：生成器除主大脑外，为每个可用大脑额外生成 `controller-<k3|codex|pi|claude>` 变体 bundle（`viable_brains()` 只看可用性不看优先级；codex 冷却期自动缺席）；server 启动带多个 `--agent` 注册后，Boss 在 UI 按会话选大脑，不再被默认大脑锁定。动因：大脑覆盖菜单只放 headless harness（`BRAIN_HARNESS_LABELS` 产品设计），kimi-native 只能经声明式 harness 进菜单。
 - **docs · PITFALLS 坑 28/29/30**：kimi 新目录信任引导卡死；纯 API 创建 kimi-native 顶层会话首轮注入 stalled（根因未定位，先记症状与绕法）；codex 配额冻结的「先记 cooldown 再换脑」处置流程。
 
 ## 2026-08-19

@@ -22,6 +22,9 @@
   - 官方 Anthropic Claude 模型：可选，大概率不用；仅 sniff=anthropic 时生成 exec_anthropic
   - Codex 工人: harness codex headless；Codex 可做丞相（--brain codex）
   - cooldown: 注册表 Scores 表 cooldown-until 未到期 → 该模型不出现在 tools
+  - 大脑变体：除主大脑（--brain 或默认优先级）外，为每个可用大脑生成
+    controller-<k3|codex|pi|claude> 变体 bundle（与主 bundle 同目录并列），
+    多个 --agent 一起注册后，Boss 可在 UI 按会话选大脑
 """
 from __future__ import annotations
 
@@ -350,8 +353,13 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
     角色列只能填 关二爷/法正/马良/诸葛丞相（及主公若需要）"""
 
 
-def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str, list[str]]:
-    """返回 ({相对路径: 内容}, workers, brain, pool_notes)。"""
+def build(
+    det: dict, brain: str | None, name_suffix: str = ""
+) -> tuple[dict[str, str], list[str], str, list[str]]:
+    """返回 ({相对路径: 内容}, workers, brain, pool_notes)。
+
+    name_suffix 用于大脑变体 bundle：agent 名 controller<suffix>（如 controller-k3），
+    与主 bundle 并存注册，让 Boss 在 UI 里按会话选大脑。"""
     files: dict[str, str] = {}
     workers: list[tuple[str, str, str, str]] = []  # (name, harness, vendor, note)
     pool_notes: list[str] = []
@@ -553,9 +561,16 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
             f"\n  model: {model}\n  auth:\n    type: provider\n    name: {provider}"
         )
 
+    brain_short = {
+        "kimi": "Kimi K3 / kimi-native",
+        "codex": "Codex",
+        "pi": "pi / API",
+        "claude-sdk": "Claude SDK",
+    }[brain]
+    variant_note = f"·大脑：{brain_short}" if name_suffix else ""
     files["config.yaml"] = f"""spec_version: 1
-name: controller
-description: 三国总控（诸葛丞相）。本文件由 gen_controller_bundle.py 生成（{datetime.date.today().isoformat()}），请勿手改——重新跑生成器即可。
+name: controller{name_suffix}
+description: 三国总控（诸葛丞相）{variant_note}。本文件由 gen_controller_bundle.py 生成（{datetime.date.today().isoformat()}），请勿手改——重新跑生成器即可。
 
 executor:
   type: omnigent{pi_model_top}
@@ -590,6 +605,25 @@ tools:
 {chr(10).join(f'    - {n}' for n, _, _, _ in workers)}
 """
     return files, [n for n, _, _, _ in workers], brain, pool_notes
+
+
+# 大脑变体的目录后缀：controller-k3 / controller-codex / ...
+VARIANT_BRAIN_LABELS = {"kimi": "k3", "codex": "codex", "pi": "pi", "claude-sdk": "claude"}
+
+
+def viable_brains(det: dict) -> list[str]:
+    """所有可作为大脑变体的 harness（只看可用性，不按优先级筛选）。"""
+    cd = det["cooldowns"]
+    out: list[str] = []
+    if det["has_codex"] and "codex current model" not in cd:
+        out.append("codex")
+    if det["has_claude"] and det["claude_vendor"] == "anthropic":
+        out.append("claude-sdk")
+    if det["has_pi"] and det["pi_providers"]:
+        out.append("pi")
+    if det["has_kimi"]:
+        out.append("kimi")
+    return out
 
 
 def ensure_acp_config(dry_run: bool = False) -> None:
@@ -648,25 +682,37 @@ def main() -> None:
 
     files, workers, brain, notes = build(det, args.brain)
     print(f"\n== 生成计划 ==\n大脑: {brain}\n工人: {workers}")
+    variants = [b for b in viable_brains(det) if b != brain]
+    if variants:
+        print(f"大脑变体（按会话可选）: {[f'controller-{VARIANT_BRAIN_LABELS[b]}' for b in variants]}")
     if notes:
         print("备注:")
         for n in notes:
             print(n)
     if det.get("has_grok"):
         ensure_acp_config(dry_run=args.dry_run)
-    out = Path(args.out)
-    keep = set(workers)
-    _purge_stale_agents(out, keep, args.dry_run)
-    for rel, content in files.items():
-        p = out / rel
-        print(f"  {'[dry] ' if args.dry_run else ''}写 {p}")
-        if not args.dry_run:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content)
+
+    written: list[Path] = []
+    jobs: list[tuple[Path, dict[str, str], list[str]]] = [(Path(args.out), files, workers)]
+    for vb in variants:
+        vfiles, vworkers, _, _ = build(det, vb, name_suffix=f"-{VARIANT_BRAIN_LABELS[vb]}")
+        jobs.append(
+            (Path(args.out).parent / f"controller-{VARIANT_BRAIN_LABELS[vb]}", vfiles, vworkers)
+        )
+    for out, fmap, wlist in jobs:
+        _purge_stale_agents(out, set(wlist), args.dry_run)
+        for rel, content in fmap.items():
+            p = out / rel
+            print(f"  {'[dry] ' if args.dry_run else ''}写 {p}")
+            if not args.dry_run:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(content)
+        written.append(out)
     if not args.dry_run:
+        agent_args = " ".join(f"--agent {p}" for p in written)
         print(
             f"\n完成。重新注册：omnigent-zh server stop; "
-            f"omnigent-zh server --no-open --agent {out}"
+            f"omnigent-zh server --no-open {agent_args}"
         )
 
 
