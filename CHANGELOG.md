@@ -13,6 +13,7 @@
 - **fix · 坑 31 harness_override 半拉子生效（omnigent runner 核心修复）**：override 到 kimi-native 的会话 turn 被 spec 默认大脑接走（TUI 空白、页面照跑）——runner `_session_harness_name` 只从 spec 反解。修复 = 会话级 override 缓存（create 时写入、turn 派发兜底、销毁清理）；回归测试 `tests/runner/test_session_harness_override.py` 3 项正反对照。改在嵌套副本 runner，新会话自动生效（runner 按会话新拉进程）。
 - **fix · 坑 29 根因定位**：native 会话「create + initial_items」不自动起跑——runner 崩溃恢复保护（`runner/app.py:9906` 的 `is_native_harness` 分支）跳过首轮 kickoff；API 自动化绕法 = 先建空会话、首消息走 `/events`（UI 天然两步走，从未踩坑）。
 - **~~feat · 大脑变体 bundle~~（同日被统一菜单方案取代，代码已回退）**：为每个可用大脑生成 `controller-<k3|...>` 变体 bundle 的思路保留在 git 历史（548b16d），如未来需要「同智能体不同提示词」变体可参考。
+- **docs · 部署文档 §4.3.3 刷新**：丞相大脑菜单现为全量清单（Kimi K3 TUI 经 坑 31 修复后真实可选）；补 Codex 冷却期 pi 默认说明与「换脑验收看 TUI/runner 日志」锚点。
 - **docs · PITFALLS 坑 28/29/30**：kimi 新目录信任引导卡死；纯 API 创建 kimi-native 顶层会话首轮注入 stalled（根因未定位，先记症状与绕法）；codex 配额冻结的「先记 cooldown 再换脑」处置流程。
 
 ## 2026-08-19

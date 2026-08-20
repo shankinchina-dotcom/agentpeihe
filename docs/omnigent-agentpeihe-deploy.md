@@ -332,20 +332,22 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 
 端到端实证（2026-08-04）：丞相(Kimi) 派 关二爷·Grok 执行 G1 + 法正·DeepSeek 异 vendor 核验 PASS，验收呈军报。相关排障沉淀见 PITFALLS 坑 14/15/16。
 
-### 4.3.3 丞相换大脑：界面壳对照 + Codex 档位（2026-08-10）
+### 4.3.3 丞相换大脑：界面壳对照 + Codex 档位（2026-08-20 更新）
 
-网页新建会话：智能体选 **丞相**，再在「智能体执行器」里切换大脑 harness。三条常见路径**人机界面不同**，编排能力（关卡 / 派 exec_* / 异 vendor）仍是同一套 agentpeihe：
+网页新建会话：智能体选 **丞相**，再在「智能体执行器」里切换大脑 harness。菜单为**全量大脑清单**——headless 系（Claude SDK / Codex / Cursor / Pi / Antigravity / Copilot / Grok Build）加 **Kimi（K3 TUI）**（2026-08-20 起，`BRAIN_HARNESS_LABELS` 一处映射，override 链路经坑 31 修复后真实生效）。各路径**人机界面不同**，编排能力（关卡 / 派 exec_* / 异 vendor）仍是同一套 agentpeihe：
 
 | 网页选择 | harness id | 你看到的界面 | 说明 |
 |----------|------------|--------------|------|
-| 默认 / Kimi | `kimi-native` | **Kimi Code TUI** | bundle 默认大脑；native 通道，直接厂商终端 |
+| 执行器选 **Kimi（K3 TUI）** | `kimi-native` | **Kimi Code TUI** | native 通道，直接厂商终端，可旁观 |
 | 执行器选 **Codex** | `codex` | **Omnigent REPL**（`omnigent attach`） | 大脑 headless/SDK；首启会问 dark/light 主题（仅 REPL 配色，不影响模型） |
+| 执行器选 **Pi** | `pi` | 页面聊天（无 TUI） | API 大脑；当前 bundle 默认（Codex 冷却至 2026-09-12，见坑 30） |
 | 执行器列表顶层 **Codex** 预设（非「丞相」） | `codex-native` | **真·Codex TUI** | 单兵写码入口，**不是**丞相编排路径 |
 
 **禁止混淆：**
 
 - 「丞相 + 菜单 Codex」≠ 真·Codex TUI。要原汁原味 Codex 皮肤，新建会话走执行器 **Codex** 预设，不要挂在丞相上改 harness。
 - 2026-08-10 前存在 labels 不跟 harness 走的 bug：改成 Codex 仍 stamp `kimi-native-ui`、把 gpt-5.6-* 塞进 Kimi（PITFALLS 坑 17，已修）。硬刷新前端后以**新建会话**为准。
+- 2026-08-20 前存在 override 只管终端不管 turn 的 bug：TUI 起来了但 turn 被默认大脑接走（坑 31，已修）。**验收换脑必须看 TUI 实况或 runner 日志的 harness 名**，页面有回复不算数（回复可能来自别的大脑）。
 
 **Codex 模型策略（Boss 2026-08-10）**：**新项目 / 新会话只用 GPT-5.6 家族**（`gpt-5.6-sol` / `terra` / `luna`）。**禁止** 再派 `gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini` 及各类 5.4-mini 变体（如 `…codexswic…`）——会与 `reasoning_effort=max` 等档位冲突（`unsupported_value`）。池子默认：`gen_controller_bundle` 的 `CODEX_WORKER_MODEL=gpt-5.6-sol`；catalog 静态列表已对齐 5.6。
 
