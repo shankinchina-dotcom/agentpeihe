@@ -169,7 +169,9 @@ bash ops/cli-integration/verify-wsl-cli-backends.sh
 
 ```bash
 claude        # Claude Code
-kimi login    # Kimi Code
+kimi login    # Kimi Code（OAuth；预期 Logged in to managed:kimi-code）
+# 嵌入 TUI「Send /login」≠ 这条 CLI，见 PITFALLS 坑 24
+# 无反应见坑 24；Hermes「未接收粘贴」见坑 25
 # Hermes、Qwen 等按各自文档登录
 ```
 
@@ -213,7 +215,7 @@ providers:
       base_url: https://api.deepseek.com/v1
       api_key: $DEEPSEEK_API_KEY
       models:
-        default: deepseek-v4-pro
+        default: deepseek-v4-flash
 
   # Grok (xAI)
   grok:
@@ -309,7 +311,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | 通道 | 正确接法 | 禁止 |
 |------|----------|------|
 | 丞相 Controller | 默认 `harness: codex` | 用 CC Switch 把大脑指到 Kimi |
-| DeepSeek 工人 | **CC Switch + Claude Code 壳** → `exec_deepseek` + `claude-native`（借 Claude 底座） | 与 Kimi 共用 Claude 壳；勿再默认 pi 直连当主路径 |
+| DeepSeek 工人 | **CC Switch + Claude Code 壳** → `exec_deepseek` + `claude-native`（借 Claude 底座） | 默认 **`deepseek-v4-flash[1M]`**（flash + 1M 上下文）；`~/.claude/settings.json` 的 `ANTHROPIC_MODEL` 须带 `[1M]`，否则 TUI 常显示 200k。勿再默认 pi 直连当主路径；勿与 Kimi 共用 Claude 壳 |
 | Kimi 手工 | 网页选 Kimi 或 `omnigent-zh kimi` | 占 Claude / CC Switch |
 | Kimi 自动 | `exec_moonshot` + `kimi-native`（默认 `--yolo`） | `claude-native` 伪装 moonshot |
 | 官方 Anthropic Claude | 可选；大概率不用 | — |
@@ -383,7 +385,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | `reviewer` | 法正（御史中丞） | 独立核验，检查风险，提出反例 |
 | `specialist` | 马良 | 领域专家，专项深度审查 |
 
-关卡契约的 `Role` 字段写英文 key，Web UI 和报告显示中文名。**子代理会话命名必须用中文角色名**（Web UI 子代理图谱直接显示它）：`session_name` 格式 `<角色中文名>·<模型名>-<关卡号>-<简述>`，例：`关二爷·DeepSeek-G1-统计脚本`、`法正·Grok-G2-独立核验`——禁止英文 slug、禁止表外中文名（生成器 Controller prompt 已硬写；出现「赵云=」须重写后再派）。
+关卡契约的 `Role` 字段写英文 key，Web UI 和报告显示中文名。**子代理会话命名必须用中文角色名**（Web UI 子代理图谱直接显示它）：`title` 用稳定名 `<角色中文名>·<模型名>`（无关卡号），例：`关二爷·DeepSeek`、`法正·Grok`——同名续发自动复用同一子会话（会话池），并行关卡才追加 `-P2`/`-P3`；禁止英文 slug、禁止表外中文名（生成器 Controller prompt 已硬写；出现「赵云=」须重写后再派）。机制与设计见 [Prompt 编译器与会话池设计](PROMPT_COMPILER_SESSION_POOL.md)。
 
 ### 4.5 模型能力动态评分（多维度）
 

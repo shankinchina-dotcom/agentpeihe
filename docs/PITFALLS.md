@@ -24,7 +24,7 @@
 
 - **为什么遇到**：这是产品设计，不是故障——主聊天流只显示 Controller（老板视图），子 agent 是独立子会话。
 - **怎么解决**：右侧"智能体"面板的**子代理图谱**（SubagentsGraphView）里有点名可点的节点，点进去看完整现场；native 工人还有可旁观的 tmux 终端。
-- **同类避免**：Controller 派发时的 `session_name` 必须用**中文角色名**（`关二爷-G1-统计脚本`、`法正-G2-独立核验`），别用英文 slug——这条已写进 controller prompt 模板和生成器。
+- **同类避免**：Controller 派发时的会话名必须用**中文角色名**，别用英文 slug——这条已写进 controller prompt 模板和生成器。（2026-08 起命名规则改为稳定名 `<角色中文名>·<模型名>`、无关卡号，工具参数真名是 `title` 不是 `session_name`，见坑 27。）
 
 ---
 
@@ -151,6 +151,28 @@
   4. 可选本机脚本（非仓库必装）：`~/.local/bin/omni-up`（必要时起 server 再前台挂 host）、`omni-check`（config + HTTP + host 进程）。
 - **同类避免**：改 Server 端口必须 **同时改 config.server**（或 host 显式 `--server`）；Host 终端勿随手关；睡眠后重开 host。侧栏「不活动」子 agent 多为图谱/DB 记录——**无 OS 僵尸进程时不必为内存狂清**；要腾资源则停止/归档父会话。失败父会话建议 **新开** 任务，勿在断链树上硬续。
 
+### 坑 22：kimi tip/Welcome 与 footer 同屏时粘贴丢（2026-08-11 已修；Escape 范围见坑 24）
+
+- **现象**：红字「未接收粘贴」；终端末尾有 `Use Kimi K3…` tip 框 + 可能已有 `context:`，工作区零改动。
+- **根因**：只等 `context:` 就 paste，tip 仍占焦点；`C-a/C-k` 清草稿对 kimi 无效。
+- **怎么解决**：就绪须 `context:` + 输入框（行首 `>` **或** K3 盒线 `│ >`）；**只有** tip/trust/sign-in 才 Escape，**禁止**对 Welcome 连打 Escape（会刷坑 24 红字）；空输入框不清 Backspace。短单行 paste 失败回退 `send-keys -l`。见 `kimi_native_bridge`。**新开会话** 加载。
+
+### 坑 21：DeepSeek 壳模型 id 无 `[1M]` → 状态栏只显示 200k Ctx（2026-08-10）
+
+- **现象**：`Model: deepseek-v4-flash/...` 且 `200k Ctx`，尽管 Haiku/Fable 别名已是 `deepseek-v4-flash[1M]`，老板认为模型支持 1M。
+- **根因**：Claude Code / CC Switch 对 Anthropic 兼容壳用 **模型 id 后缀**区分上下文档。主开关 `ANTHROPIC_MODEL` 若只写 `deepseek-v4-flash`（无 `[1M]`），TUI 按 **200k** 窗显示；`ANTHROPIC_DEFAULT_*_MODEL` 里的 `[1M]` 只作用于对应别名，**覆盖不了**当前 `ANTHROPIC_MODEL`。
+- **怎么解决**：`~/.claude/settings.json` 设  
+  `ANTHROPIC_MODEL=deepseek-v4-flash[1M]`（默认 flash + 1M）。pro 用 `deepseek-v4-pro[1M]`。改后须 **新开** claude-native / `exec_deepseek` 会话（旧进程不重读 settings）。
+- **注意**：pi / OpenAI 兼容 `api.deepseek.com/v1` 的 model id **不要**乱加 `[1M]`（与壳 id 约定不同）。通道仍是 DeepSeek 主路径 = Claude 壳，不是 pi。
+- **验证**：新工人 TUI 底部 Ctx 为 **1M/1000k** 量级，而非 `200k Ctx`。
+
+### 坑 20：native 工人冷启动注入假成功，子会话空转（2026-08-10 已修多 harness 闭环）
+
+- **为什么遇到**：多数 `*_native_executor.run_turn` 在 inject 后即 `TurnComplete`。旧逻辑就绪 soft fall-through / blind Enter，paste 打进尚未就绪 TUI，父会话以为已派完，侧栏工人空白。
+- **怎么解决（问题 1）**：各 harness 交付闭环 + 中文红字——`kimi`/`claude`/`cursor`：硬就绪 + 粘贴可见 + Enter 重试；`hermes`：粘贴可见 + state.db 确认 + 最多整包重投 1 次（禁双 Enter）；`goose`：硬 settle + 粘贴可见 + **仅一次** Enter；`acp`（Grok）：超时/进程/启动失败中文。空消息统一中文。
+- **未做（问题 2）**：同 vendor 多路（如 20 个 kimi）引擎级 `max_inflight` 闸——遇限流再开。
+- **同类避免**：「粘贴成功 ≠ 模型已开跑」；失败必须红字中文；改引擎后 **重启 host/runner**。
+
 ### 坑 19：kimi-native 在 model catalog 呈 `provider kind=none`（2026-08-10 已修 catalog 读数）
 
 - **现象**：本机 Kimi CLI / OAuth / `kimi-code/k3` 正常，编排预检或 `sys_list_models` 仍把 `kimi-native` 工人解成 **`kind=none`**，note 含 **`dispatches to this worker cannot run here`**，导致 Controller 不敢派 `exec_moonshot`。
@@ -159,9 +181,76 @@
 - **生效**：改的是 Python 包；**需重启 runner（及必要时 server）** 才加载新 catalog。知识库任务侧改文件不会进 monorepo 记录。
 - **仍非目标**：软链 `~/.kimi`；在业务仓修引擎；canary 资格自动写 registry。
 
+### 坑 23：法正 GLM 跑完丞相收不到军报 + Kimi `/login` 死刷 + Hermes `^A^K`（2026-08-14 已修）
+
+- **现象**：子会话 idle 且已有 PASS 军报，父会话停在「已派出，等回报」；Hermes 日志刷 `external_session_usage` 400；Kimi 工人/父会话反复出现 `No active session` / `/login`；Hermes 草稿里出现字面量 `^A^K`。
+- **根因**：① usage POST 只带 `model`，服务端要求 token/window → 400 且每 0.4s 重试。② 新版 Hermes `state.db` 可能无 `sessions` 表，discovery 失败 → 永不 mirror、永不 `idle`、父 inbox 不醒。③ 父 TUI 等工人时被 1800s pane reaper 收割，wake 注入无处落。④ 见坑 24（TUI `/login` ≠ `kimi login` CLI）。⑤ Hermes 清草稿用了 readline `C-a/C-k`，TUI 当普通字符吃进去。
+- **怎么解决**：usage 改 `external_model_change`；无 `sessions` 表从 `messages` 发现；父有未完成工人时不 reap；Hermes 改 End+Backspace。Kimi 冷启动见坑 24。**重启 host/runner**。
+- **同类避免**：父 inbox 唤醒看子会话 `external_session_status: idle`，不要只看嵌入 TUI。
+
+### 坑 24：Kimi Welcome 上的 `/login` 不是 OAuth 掉了（2026-08-18/19 再修）
+
+- **现象**：① 新 kimi-native pane 欢迎栏已有或空着 `Session:`、OAuth 已登录，仍刷几十行 `Error: No active session. Send /login to login.`。② 修完 Escape 后网页「继续任务」无反应，会话 `failed`，红字「输入框未就绪」。
+- **根因**：两套「登录」+ 按键误伤 + 盒线漏检。`kimi login` CLI = OAuth；TUI `/login` = 进程内 chat session。K3 冷启动固定打「No session yet，第一条消息才建 session」。Welcome 会一直留在滚动区，当成模态后每 0.8s Escape ≈ 38 行红字。禁止 Escape 之后若只认行首 `>`，会漏掉 K3 盒线 `│ >`（`conv_8e588d8e`），静等超时。连打 Enter、再注入 `/login` 是另两条已修路径（353471d / 503f83d）。
+- **怎么解决（引擎）**：Welcome **不是** overlay；禁止对它 Escape / `/login` / 空 Enter；静等 `context:` +（行首 `>` 或盒线 `│ >`）再贴**第一条真用户消息**；只有 tip/trust/sign-in 才 Escape；空输入框不清 Backspace。已刷过的 pane 历史红字清不掉，**必须新开会话**。真设备码授权才要浏览器。提交 `a5c8858` + `711c0ee`。
+- **人怎么判断**：CLI 已 Logged in → **不要**再跑 `kimi login`。Welcome 那两行、空着的 `Session:` 都可以留着。网页无反应先看 `last_task_error`，不要先当没登录。
+- **同类避免**：iTerm 能开 ≠ 嵌入 TUI 已有 chat session；斜杠 `/login` ≠ shell `kimi login`；欢迎框 `Session:` 有 id ≠ 已经有一条可对话的 chat session。
+
+### 坑 25：Hermes 把长粘贴收成 `[Pasted text #N]` 被当成没贴进去（2026-08-18 已修引擎，待提交）
+
+- **现象**：法正 hermes-native 首条长关卡红字「未接收粘贴」；网页 `failed`。嵌入终端底部其实是 `❯ [Pasted text #3: 37 lines → …/paste_3_….txt]`。
+- **根因**：Hermes 0.19 把多行 bracketed paste 收成 chip，原文末行不在 pane 里。引擎只搜 needle，不按 Enter。`conv_949c2666` G20 现场：三次 paste 文件都在，chip 已在输入框。
+- **怎么解决（引擎）**：composer 尾部出现 `[Pasted text #` 视为粘贴已提交，再 Enter。≥4000 字仍走 `omnigent_injected_task.md` 短指针。`test_hermes_native_bridge` 39 绿。现场已补按 Enter，TUI 进入 `Initializing agent…`；**网页 failed 与 TUI 是否在跑不是一回事**。G20 是否交卷 / 丞相是否收到 **未在本文档关闭**。
+- **同类避免**：红字「未接收粘贴」先看输入框有没有 paste chip，不要立刻重派把 FIFO 再打乱。
+
 ---
 
 ## 五、工程习惯（本次最大的两条元教训）
 
 1. **先查 schema，再查 runtime。** 配置不生效时，parser 的字段定义是一手证据，运行时日志是二手。三层故障里有两层（model 层级、credential 白名单）都是"先读定义五分钟，胜过猜日志三小时"。
 2. **配置生成化，不手改。** 换模型/换大脑/换机器 = 重跑 `gen_controller_bundle.py`（环境检测 + CC Switch 嗅探 + 注册表 cooldown 全部自动），手改 YAML 是技术债的源头。本仓库的快速启动就是用生成器，而不是给你一份静态 YAML。
+
+---
+
+## 六、源码副本与会话派发语义
+
+### 坑 26：工作区里有两个 omnigent-zh-cn 副本且严重分叉，改/读代码找错目录
+
+- **为什么遇到**：本机同时存在顶层 `/Users/shankluo/AI/agentcenter/omnigent-zh-cn`（fork remote，HEAD `8159424`，停在 2026-07-19，**缺坑 14/15/16 的 launch 级修复**）和嵌套 `/Users/shankluo/AI/agentcenter/agentcenter/omnigent-zh-cn`（agentcenter monorepo，活跃）。两个目录同名，凭工作区表象或旧交接文档打开顶层副本，对照"源码"排查会看到修复"不存在"、行号全对不上。而生产 server 实际从**嵌套副本**经 uv tool 安装——`~/.local/share/uv/tools/omnigent-zh-cn/uv-receipt.toml` 实锤：`directory = ".../agentcenter/agentcenter/omnigent-zh-cn"`。已废弃副本的 README 顶部已加冻结警示。
+- **怎么解决**：改核心一律改**嵌套副本**；改完 `uv tool install --reinstall` 重装 + 重启 server/host 才生效（重启快照逻辑同坑 1/坑 18）。读代码、引行号（如 `_find_existing_child_session`）同样以嵌套副本为准。
+- **同类避免**：「源码在哪」一律查安装凭证——`uv-receipt.toml` 的 `directory` 或 `pip show <pkg>` 的 Location，别信工作区目录表象；任务交接文档里的路径会过时，接手先核对再动手。
+
+### 坑 27：以为 `sys_session_send` 每发必新建会话，按 `session_name` 找参数还找不到
+
+- **为什么遇到**：bundle 和业务文档一直把会话名参数叫 `session_name`，但工具 schema 的真名是 **`title`**（`omnigent/tools/builtins/spawn.py`，`_build_sys_session_send_schema`）——按 session_name 搜 schema 一无所获。更隐蔽的是语义：工具是 **create-or-continue**，同一 `(agent, title)` 再发不新建，而是自动续跑旧子会话（带完整历史）——schema 描述原文「Lets later turns reuse the same conversation via another sys_session_send call with the same title」；查找逻辑在 `omnigent/runner/tool_dispatch.py` 的 `_find_existing_child_session` / `_send_to_existing_session`。当"每发必新建"用，契约和规则被重复投喂，输入 token 翻倍还不自知。
+- **怎么解决**：
+  1. 会话命名改**稳定名** `<角色中文名>·<模型名>`（去掉旧规则的关卡号和简述），同角色同模型全程同名——会话池（Sticky Executor）正是利用 create-or-continue 复用上下文，续关只发 followup 契约段；并行关卡例外追加 `-P2`/`-P3`。完整设计见 `docs/PROMPT_COMPILER_SESSION_POOL.md`。
+  2. 续发**别传** `model` / `harness` / `file_ids` / `cost_budget`——仅创建时有效，续发传了核心硬报错；要换模型就换名开新会话。
+  3. 同会话有 turn 在跑时续发被拒（忙碌保护，天然串行）——等子会话完成通知（inbox）再发，别重试轰炸。
+  4. 要清零上下文：`sys_session_close`（tombstone，内部改写存储 title 释放名额）后同名可重建。
+- **同类避免**：改派发逻辑前**先读 `spawn.py` 的 schema，再读 `tool_dispatch.py` 的 `_execute_subagent_tool`**——「先查 schema 再查 runtime」（坑 7 同款）。业务文档俗名（session_name）与 schema 真名（title）脱节是常态，一律以 schema 为准。
+
+---
+
+## 七、会话池首航（2026-08-20 金丝雀验收实锤）
+
+### 坑 28：kimi-native 进全新 workdir，被 "Trust this folder?" 首启引导卡死
+
+- **为什么遇到**：Kimi Code 在**从未信任过的目录**首次启动时弹信任引导页（Trust / Don't trust 选项，默认高亮 Don't trust），omnigent 自动建会话时无人点选——headless 死等家族（坑 4/5/11）的新成员。画面静止在引导页，runner 侧零报错，和坑 4 一样"像卡死而非失败"。
+- **怎么解决**：`tmux -S <sock> send-keys Up Enter` 选 "Trust this folder" 即放行；信任按目录记忆，同目录后续会话不再弹。批量/自动化场景：**先把目标目录跑一次手工 kimi 完成信任**，或复用已信任目录。
+- **同类避免**：任何 native CLI 被引向**新 workdir** 前，先想"它在这个目录的第一次启动有没有引导页"——信任页、登录页、升级提示都是无人值守杀手（坑 24 的 `/login` 是同款）。排查顺序：先 `capture-pane` 看 TUI 实况，再查日志。
+
+### 坑 29：纯 API 创建的 kimi-native 顶层会话，首轮消息注入 stalled（根因未定位）
+
+- **为什么遇到**：2026-08-20 金丝雀中，`POST /v1/sessions`（agent=controller，spec 默认 harness=kimi-native，无 labels）创建的会话：runner 日志显示 terminal+forwarder 已建（`Auto-created kimi terminal + forwarder`）、消息已转换（`_convert_raw_items_to_input: 1→1`），**随后静默**——TUI 停在 "No session yet"，注入永不发生，无报错。同 stack 上 UI 手工创建的 kimi-native 会话（生产「继续任务」）工作正常，差异点疑似在 API 创建路径的 labels/首轮注入触发条件。**根因未定位，先记症状与证据**（runner 日志止于 items 转换；`inject_user_message` 是 tmux 粘贴路径，理论上不需要 wire 存在；坑 24 的 K3 盒线就绪检测疑似相关）。
+- **怎么解决**：绕开——Controller 大脑改用 pi（或 claude-sdk）等 headless harness 后 API 路径一次跑通；kimi-native 大脑继续走 UI 手工创建（生产已验证）。要根治需查 runner 首轮注入的触发条件（`inner/kimi_native_executor.py:run_turn` 之前的那段调度），修在嵌套副本。
+- **同类避免**：「能建会话」≠「能跑 turn」≠「消息能到 TUI」——接一条 harness 要逐段验收（坑 16 同款教训：消息能进不等于事件能出）。自动化链路创建会话后，**前两分钟盯一眼 TUI 画面或 items 流**，沉默即异常。
+
+### 坑 30：Codex 配额冻结（usageLimitExceeded），Controller 大脑全线瘫痪
+
+- **为什么遇到**：2026-08-20 金丝雀首次发起即 `failed`：`codexErrorInfo=usageLimitExceeded`，官方回复 9 月 12 日恢复。默认大脑 codex 死 = 所有新 controller 会话死；**发现晚**——不改派发就永远不会撞见。
+- **怎么解决**（已固化为流程）：
+  1. 注册表 Scores 表给 `Codex current model` 行加 `cooldown-until: 2026-09-12`（额度耗尽不扣分，到期后给一关低成本复证）——生成器 `read_cooldowns` 自动跳过 codex 大脑和 exec_openai 工人；
+  2. `python3 gen_controller_bundle.py --brain kimi|pi` 换脑重生成 + 重启 server（坑 1：重启才重新注册）；
+  3. 大脑恢复后重跑生成器（不带 `--brain`）回到默认优先级。
+- **同类避免**：配额死不等于模型死，**先记 cooldown 再换脑**，别让生成器下次又把死脑选回来（cooldown 不进 prompt，只影响生成期选择，见坑 27 的设计文档）。排班预设接管人（注册表 2026-07-31 已有同款教训：连续两轮额度尽死于 runner_disconnected）。

@@ -141,7 +141,7 @@ Only one gate may execute per approval. The executor stops after reporting and d
 Dispatch must be observable to the Boss without reading logs:
 
 1. **At dispatch**: the controller names the actual model for every role, in the dispatch message itself — format `角色=模型（agent id）`, e.g. `关二爷=DeepSeek（exec_deepseek）`、`法正=Grok（exec_xai）`、`马良=Kimi K3（exec_moonshot）`. A dispatch that only names the role is incomplete. **Invented role names (赵云, etc.) make the dispatch invalid** — rewrite before `sys_session_send`.
-2. **Session naming** (extends the Chinese-name rule): `<角色中文名>·<模型名>-<关卡号>-<简述>`, e.g. `关二爷·DeepSeek-G1-统计脚本`、`法正·Grok-G2-独立核验`. The model slug is part of the name so the Web UI sub-agent graph shows who is who at a glance. Role segment must be from the closed Roles table only.
+2. **Session naming** (extends the Chinese-name rule): stable name `<角色中文名>·<模型名>`, e.g. `关二爷·DeepSeek`、`法正·Grok` — no gate number, no per-gate slug. `sys_session_send` is create-or-continue: reusing the same title continues the same sub-session with full history (sticky executor across gates); a different title spawns a new session. Parallel gates are the only exception — append `-P2`/`-P3`. The model slug is part of the name so the Web UI sub-agent graph shows who is who at a glance. Role segment must be from the closed Roles table only.
 3. **At task/unit completion**: the controller closes with a cast-and-outcome table（阵容战报表）, one row per executed gate:
 
 ```text
