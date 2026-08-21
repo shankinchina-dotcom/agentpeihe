@@ -4,6 +4,10 @@
 
 ---
 
+## 2026-08-21
+
+- **fix · kimi 0.37.2 TUI 适配（坑 32，omnigent 仓）**：多行粘贴被 0.37.2 折叠成 `[paste #N +M lines]` 占位符 → 草稿检测改认占位符；信任页改方向键菜单（默认 Don't trust、Esc=退出 TUI）→ `_settle_pane` 改读 `❯` 选中行 Up 导航 + Enter，绝不发 Esc。回归 6 项、executor 64 项 + kimi 全套 143 项绿，tests/inner 1752 过、tests/runner 1192 过（残留失败均 macOS 既有环境问题，干净树复现）；活体：/tmp 全新目录 46 行粘贴一次投递成功回 "OK"，Boss 真实会话重发链路确认恢复。
+
 ## 2026-08-20
 
 - **ops · 会话池 + Prompt 编译器上线并过金丝雀**：重跑生成器 + 重启 server 完成注册；三关连跑金丝雀（/tmp/ap_canary，G1→G2→G3 派 exec_deepseek）实测全过——Executor 子会话全程仅 1 个（稳定名「关二爷·DeepSeek」），首派 initial 编译含固定头、第 2/3 派 followup 只含契约段，法正（exec_xai）首条消息零执行者军报字段，战报表收尾；12 项 unittest 独立复跑全绿。
