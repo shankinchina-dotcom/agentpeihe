@@ -224,7 +224,7 @@ providers:
       base_url: https://api.x.ai/v1
       api_key: $GROK_API_KEY
       models:
-        default: grok-4.5
+        default: grok-4.6
 
   # 千问 API（DashScope）
   dashscope:
@@ -299,6 +299,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 
 1. **注册**：`omnigent-zh server --no-open --agent ~/.omnigent/agents/controller`（前台模式）。`server start` 后台模式不支持 `--agent`；`~/.omnigent/agents/` 下的文件**不会**被自动注册。
 2. **改后必重启**：server 拿的是启动时的 bundle 快照，改了 bundle 或重跑了生成器，必须重启 server 重新注册，否则跑的还是旧配置。
+3. **prompt 尺寸预算 ≤12KB**：claude-native 子会话启动命令把 controller prompt 整段注入 `--append-system-prompt`，prompt 超 ~10KB 即撞 tmux 16KB imsg 硬顶（坑 35）——改 prompt 后第一发 claude-native 派单盯 runner 日志 `command too long`。
 
 **schema 硬约束（手改时必看，生成器已内置）：**
 - 大脑 harness 用非 native（claude-sdk / codex / pi），才能以本名进 Web UI"智能体"区（2026-08-04 起 kimi-native 大脑已完整可用，见 §4.3.2）
@@ -311,11 +312,12 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | 通道 | 正确接法 | 禁止 |
 |------|----------|------|
 | 丞相 Controller | 默认 `harness: codex` | 用 CC Switch 把大脑指到 Kimi |
-| DeepSeek 工人 | **CC Switch + Claude Code 壳** → `exec_deepseek` + `claude-native`（借 Claude 底座） | 默认 **`deepseek-v4-flash[1M]`**（flash + 1M 上下文）；`~/.claude/settings.json` 的 `ANTHROPIC_MODEL` 须带 `[1M]`，否则 TUI 常显示 200k。勿再默认 pi 直连当主路径；勿与 Kimi 共用 Claude 壳 |
+| DeepSeek 工人 | **CC Switch + Claude Code 壳** → `exec_deepseek` + `claude-native`（借 Claude 底座） | 默认 **`deepseek-v4-flash-vision-exp[1M]`**（vision-exp 图片输入 + 1M 上下文，2026-09-09 起；pi 直连备选仍为无后缀稳定版 `deepseek-v4-flash`）；`~/.claude/settings.json` 的 `ANTHROPIC_MODEL` 须带 `[1M]`，否则 TUI 常显示 200k。勿再默认 pi 直连当主路径；勿与 Kimi 共用 Claude 壳 |
+| DeepSeek 工人（第二通道） | `exec_deepseek_hermes` + `hermes-native`（hermes CLI 直连 api.deepseek.com，model=`deepseek-v4-flash` 即官方 V4-Flash-0731，显示名 hermes-DeepSeekFlash（直连）） | 2026-09-09 起入池，与壳 exec_deepseek（vision-exp）异构并存；仅在 hermes 默认模型为 DeepSeek 时自动生成 |
 | Kimi 手工 | 网页选 Kimi 或 `omnigent-zh kimi` | 占 Claude / CC Switch |
 | Kimi 自动 | `exec_moonshot` + `kimi-native`（默认 `--yolo`） | `claude-native` 伪装 moonshot |
 | 官方 Anthropic Claude | 可选；大概率不用 | — |
-| GLM 5.2 工人 | `exec_zhipu` + `hermes-native`（hermes CLI 直连火山方舟 Agent Plan，显示名 hermes-GLM5.2（huoshan）） | 与 pi zhipu 重复入池（生成器自动去重） |
+| GLM 5.2 工人 | `exec_zhipu` + `hermes-native`（火山方舟 Agent Plan；启动钉住 `-m glm-5-2-260617 --provider volcengine-agent-plan`，显示名 hermes-GLM5.2（huoshan）） | 2026-09-09 恢复入池：嗅探 plan 块默认模型生成，不随 hermes 全局默认漂移；与 pi zhipu 去重 |
 
 换池：`python3 agentpeihe/gen_controller_bundle.py --brain codex`，然后重注册 server。
 
@@ -422,6 +424,43 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 
 ---
 
+### 4.7 日常操作卡（2026-09-09）
+
+**主路：Web UI 找丞相（90% 场景）**
+
+- 入口固定：丞相主会话（`http://127.0.0.1:6767/c/<丞相 conv_id>`，长期会话=项目记忆，别另开新会话聊同一项目）
+- 只跟丞相说话，不直接指挥工人——派单、vendor 自检、验收是它的活
+- 项目级任务直接说（走立项关三问）；续关说「继续 G<N>」；想指定模型在三问里答「全指定/半指定」
+
+**异常：先看三个读数，别猜卡死**
+
+| 症状 | 读数 | 判据 |
+|---|---|---|
+| 会话没动静 | `curl -s .../v1/sessions/<id>` 的 status | running=在跑（等）；failed=看 error code |
+| 怀疑发射失败 | labels 的 error code | `native_terminal_start_failed`→坑 35；`runner_failed_to_start`→坑 34 |
+| 想看实况 | runner 日志 tail（`~/.omnigent/logs/runner/`） | 有新行=活着 |
+
+- **复位动作只有一个**：卡死/failed 的工人会话 = close + 同名重派（丞相可做，做不了找运维）。不要在原会话上空重试——runner 绑定创建时一次终身（坑 34）
+
+**变更后三条纪律**
+
+1. 重跑生成器/改 bundle → 重启必带 `--agent`（坑 33），验证 `/v1/agents` version +1
+2. 改 controller prompt 后 → 第一发 claude-native 派单盯 runner 日志 `command too long`（坑 35）；G64 落地前 prompt 预算 ≤12KB
+3. 模型池变动 → 重跑生成器，不手改 YAML
+
+**备用：API 应急注入（绕过 UI 给丞相发消息）**
+
+```bash
+curl -X POST http://127.0.0.1:6767/v1/sessions/<丞相 conv_id>/events \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"message","data":{"role":"user","content":[{"type":"input_text","text":"你的指令"}]}}'
+```
+
+- 信封必须 `data` 包裹、content 必须是 list（纯字符串 400）
+- API 直接派子代理必须带 `parent_session_id`（否则 `runner_failed_to_start`，坑 34）
+
+---
+
 ## 第五步：核心验收 —— agentpeihe 自动中继测试
 
 ### 前置检查（验收前必须全部满足，否则 8 项标准无法判定）
@@ -496,6 +535,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | 5 | pi 子 agent 报 "No API key found"：`model` 写在 `executor.config` 里被静默忽略 | `model` 必须在 `executor` 顶层；另需 `executor.auth: {type: provider, name: <config.yaml 里的 provider 名>}` 显式绑定 |
 | 6 | 修好 YAML 后 runner 仍报凭证无法解析 | host→runner 只转发凭证白名单（无 DEEPSEEK_API_KEY）：`export OMNIGENT_RUNNER_ENV_PASSTHROUGH=DEEPSEEK_API_KEY` 并重启 host+server |
 | 7 | `env_passthrough` 加了 API key 也没用 | 那是进子进程的白名单；gateway 路径 key 走 models.json（AUTH_COMMAND），与 env 透传无关 |
+| 8 | claude-native 子会话报 `Native Claude terminal failed to start`，runner 日志 `tmux launch failed (rc=1): command too long` | controller prompt 超 ~10KB 撞 tmux 16KB imsg 硬顶（坑 35）：修剪生成器 prompt + 重跑 + 带 `--agent` 重启；根修=子会话改注入子 agent 自己 spec prompt（G64） |
 
 ---
 

@@ -162,7 +162,7 @@
 - **现象**：`Model: deepseek-v4-flash/...` 且 `200k Ctx`，尽管 Haiku/Fable 别名已是 `deepseek-v4-flash[1M]`，老板认为模型支持 1M。
 - **根因**：Claude Code / CC Switch 对 Anthropic 兼容壳用 **模型 id 后缀**区分上下文档。主开关 `ANTHROPIC_MODEL` 若只写 `deepseek-v4-flash`（无 `[1M]`），TUI 按 **200k** 窗显示；`ANTHROPIC_DEFAULT_*_MODEL` 里的 `[1M]` 只作用于对应别名，**覆盖不了**当前 `ANTHROPIC_MODEL`。
 - **怎么解决**：`~/.claude/settings.json` 设  
-  `ANTHROPIC_MODEL=deepseek-v4-flash[1M]`（默认 flash + 1M）。pro 用 `deepseek-v4-pro[1M]`。改后须 **新开** claude-native / `exec_deepseek` 会话（旧进程不重读 settings）。
+  `ANTHROPIC_MODEL=deepseek-v4-flash-vision-exp[1M]`（2026-09-09 起默认 vision-exp + 1M，支持图片输入；纯文本稳定版 `deepseek-v4-flash[1M]`，pro 用 `deepseek-v4-pro[1M]`）。改后须 **新开** claude-native / `exec_deepseek` 会话（旧进程不重读 settings）。
 - **注意**：pi / OpenAI 兼容 `api.deepseek.com/v1` 的 model id **不要**乱加 `[1M]`（与壳 id 约定不同）。通道仍是 DeepSeek 主路径 = Claude 壳，不是 pi。
 - **验证**：新工人 TUI 底部 Ctx 为 **1M/1000k** 量级，而非 `200k Ctx`。
 
@@ -267,3 +267,25 @@
 - **为什么遇到**：2026-08-21 Boss 新开 K3 会话（zhishiku 目录，46 行 brief）连续报「Kimi 未接收粘贴内容，草稿未出现在输入框」，但 TUI 实况里草稿明明在——composer 显示 `> [paste #1 +34 lines]`。**0.37.2 把多行粘贴折叠成占位符**，`_wait_for_needle` 拿原文 needle 在 pane 里找，永远找不到 → 误报失败（消息其实已在输入框，只差 Enter）。同版本第二刀：**信任页从快捷键 modal 改成方向键菜单**（"Trust this folder?"，默认高亮 *Don't trust*，`Esc` = 直接退出整个 TUI）——`_settle_pane` 的旧处理失效双重：marker 文案还是 "Trust this workspace"（新版是 "folder"）对不上，应答键 "a" 在菜单里不绑定任何操作 → 新目录会话 settle 15s 超时「输入框未就绪」。坑 28 当时只记了手工处置（Up+Enter），自动化路径没跟上，0.37.2 一升级就爆。
 - **怎么解决**：`kimi_native_bridge.py` 两处修复（agentcenter omnigent 仓，紧随坑 31 修复之后）——① `_draft_in_input_region` 识别 `_PASTE_PLACEHOLDER_RE`（`\[paste #\d+[^\]]*\]`）：prompt 行出现 baseline 里没有的折叠占位符即判定草稿已入框，提交验证循环天然兼容（Enter 后 composer 清空、占位符消失）；② `_settle_pane` 信任处理重写：`_TRUST_MARKERS` 兼容新旧文案，`_trust_menu_cursor_line` 读 `❯`/`›` 选中行——选中 accept 行 → Enter，选中其他行 → Up 导航（0.8s 限频），无选中行（旧版 modal）→ 保留发 "a" 一次。**信任页绝不进 `_FOCUS_BLOCKERS`**（Esc 在新菜单 = 退出 TUI，比卡死更糟）。回归测试各 3 项（`tests/inner/test_kimi_native_executor.py`，64 项全绿）。活体验证：/tmp 全新目录建会话（信任页 + 46 行粘贴双触发），一次投递成功、assistant 回 "OK"。
 - **同类避免**：native TUI 是**活的外部依赖**——每次升级都可能改 chrome（文案、折叠、菜单交互）。检测逻辑对「显示层」的假设越少越好：能认占位符就别认原文，能读选中行就别背快捷键。另外埋点报错文案要区分「草稿没进去」和「进去了但没认出来」——这次误报把 Boss 引向"重试或重启会话"，实际重试一百次也没用。
+
+### 坑 33：重启 server 不带 `--agent` → bundle 不重新注册，池变更静默不生效（2026-09-09）
+
+- **现象**：重跑生成器后 `omnigent-zh server stop` + 按原进程参数裸重启，server 正常 LISTEN、在跑会话全部 reattach，一切看似成功；但 `/v1/agents` 里 controller 的 version/updated_at 纹丝不动（停在旧注册），新工人、新 prompt 实际没进 server。
+- **根因**：bundle 注册只发生在启动时的 `--agent <dir>` 加载路径；裸重启只恢复 db 与会话，不读 agent 目录。`server status` 的运行态与注册内容新旧无关。
+- **怎么解决**：重启一律用生成器收尾打印的那条命令——`omnigent-zh server stop; omnigent-zh server --no-open --agent /Users/shankluo/.omnigent/agents/controller`（本机另带原进程的 `--host/--port/--database-uri/--artifact-location`）。验证标准：`/v1/agents` 里 controller 的 version +1 且 description 日期 = 生成器当天（如「生成（2026-09-09）」）。
+- **同类避免**：「进程活着 + 会话在」不能当配置/注册已生效的证据——验证要对着真正承载变更的读数（版本号、日期戳、返回内容里的新字段）做。
+
+
+### 坑 34：子代理 runner 一次绑定终身——parent 换 runner 后旧子会话永远 runner_failed_to_start；sys_session_close 有跨注册时代盲区（2026-09-09）
+
+- **现象**：server 重启 / parent 会话换了 runner 之后，向旧子会话续发报 `runner_failed_to_start`，会话看似「卡死」（UI 无新输出、无报错气泡）；`sys_session_close` 也看不到这批旧子会话（它们绑定在旧 runner 时代），关都关不掉。
+- **根因**：子代理会话只在创建时复制一次 `parent.runner_id`（sessions.py:5361/12452），之后永不换绑；parent 所属 runner 重建（重启、重注册）后，旧子会话仍指着已死的 runner id。close 路径按当前 runner 注册表枚举子会话，跨时代的旧会话枚举不到。
+- **怎么解决**：运维侧——API 派子代理必带 `parent_session_id`（创建是唯一的绑定时机）；旧会话「卡死」= 换绑不可达，一律 close + 同名重派（tombstone 后同名可重建），不要在原会话上空重试。代码侧建议（未立项）：dispatch 时检测 child runner 离线则改绑 parent 当前 runner。
+- **同类避免**：「会话还在列表里」≠「会话可调度」——排障先查 runner 绑定代际（会话 runner_id vs parent 当前 runner_id），再看消息流。重启类操作后第一发派单失败，优先怀疑绑定代际而非消息内容。
+
+### 坑 35：claude-native 子会话注入的是 controller 完整 prompt——prompt 涨破 ~10KB 即撞 tmux 16KB imsg 硬顶，终端发射被拒（2026-09-09）
+
+- **现象**：关二爷·DeepSeek（exec_deepseek / claude-native）派发失败，UI 报 `Native Claude terminal failed to start`（会话 labels: `native_terminal_start_failed`）；exec_xai（ACP）、exec_zhipu / exec_deepseek_hermes（hermes-native）同刻正常。runner 日志 `RuntimeError: tmux launch failed (rc=1): command too long`（本 runner 日志 09-08 19:42 首现，至 09-09 共 192 次）。
+- **根因**：claude-native 子会话终端启动时 `--append-system-prompt` 注入的是会话绑定 agent（=controller）的完整 prompt（runner/app.py:5909 按 session.agent_id 解 spec，子会话 create 时 agent_id=parent 的 controller）。controller prompt 10,718B 时启动命令包 ≈16.9KB；本机 tmux 实测单命令 16,000B 过、16,384B 拒（16KB imsg 硬顶）→ 发射被拒。prompt 随模型池备注逐日累涨，09-08 晚首撞线。
+- **怎么解决**：治标（已施）——生成器修剪 controller prompt 至 9,091B（模型池备注去重 + 各节冗词压缩，规则全保留），重跑生成器 + 带 `--agent` 重启（坑 33），仿真预试 15.7KB 命令 tmux 放行；治本（G64 已立项）——子会话终端改注入子 agent 自己的 spec prompt（exec_* 约 3.7KB），无 spec 可解时维持现状但对 >12KB 注入文本降级 WARN 而非硬失败。自检口诀：controller prompt 改动后，第一发 claude-native 派单必须盯 runner 日志 grep `command too long`。
+- **同类避免**：外部命令/消息通道都有隐形尺寸上限（tmux imsg 16KB、shell ARG_MAX、API context），凡「把大文本塞进启动命令」的链路，尺寸要进验收读数（字节数实测），不要只在功能层面验证「能跑」。

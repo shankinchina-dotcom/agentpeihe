@@ -13,12 +13,16 @@
   - 子 agent 按真实 vendor 命名；Reviewer 必须异 vendor
   - DeepSeek: 走 CC Switch + Claude Code 壳（claude-native），借 Claude 底座增强能力；
     不再默认用 pi 直连（有 Claude 壳 deepseek 时跳过 pi deepseek）
-  - DeepSeek 默认模型 flash + 1M 上下文：壳侧 ~/.claude/settings.json 须
-    ANTHROPIC_MODEL=deepseek-v4-flash[1M]（无 [1M] 后缀时 TUI 常显示 200k Ctx）；
-    pi/OpenAI 兼容路径仍用无后缀的 deepseek-v4-flash
+  - DeepSeek 默认模型 V4.1-Flash（规范名 deepseek-flash，原生视觉+原生 1M，2026-09-10 官方发布）：
+    壳侧 ~/.claude/settings.json ANTHROPIC_MODEL=deepseek-flash[1M]（[1M] 后缀兼容保留）；
+    旧名 deepseek-v4-flash / vision-exp 官方已下线、暂时路由 V4.1
   - Kimi: 只走 kimi-native（手工网页选 Kimi / 自动 exec_moonshot）；禁止进 Claude 壳
-  - GLM 5.2: 走 hermes-native（火山方舟 Agent Plan），显示名 hermes-GLM5.2（huoshan），
-    vendor=zhipu；有 hermes 通道时跳过同 vendor 的 pi zhipu 工人
+  - hermes 默认模型已切 DeepSeek deepseek-flash（V4.1-Flash，2026-09-11 Boss 定）；
+    此时生成第二 DeepSeek 通道 exec_deepseek_hermes（hermes-native 直连 api.deepseek.com，
+    显示名 hermes-DeepSeekFlash（直连）），与壳 exec_deepseek 并存；
+    GLM 5.2 走火山方舟 Agent Plan：嗅探 providers.volcengine-agent-plan.model 为 GLM 即生成
+    exec_zhipu（显示名 hermes-GLM5.2（huoshan），vendor=zhipu），工人经 executor.model +
+    config.provider 启动钉住（-m/--provider），不随 hermes 全局默认漂移
   - 官方 Anthropic Claude 模型：可选，大概率不用；仅 sniff=anthropic 时生成 exec_anthropic
   - Codex 工人: harness codex headless；Codex 可做丞相（--brain codex）
   - cooldown: 注册表 Scores 表 cooldown-until 未到期 → 该模型不出现在 tools
@@ -40,8 +44,8 @@ HERMES_CONFIG = Path.home() / ".hermes/config.yaml"
 
 # pi harness 可接的 API provider：(env key, provider 名, 默认模型, vendor)
 PI_PROVIDERS = [
-    ("DEEPSEEK_API_KEY", "deepseek", "deepseek-v4-flash", "deepseek"),
-    ("GROK_API_KEY", "grok", "grok-4.5", "xai"),
+    ("DEEPSEEK_API_KEY", "deepseek", "deepseek-flash", "deepseek"),
+    ("GROK_API_KEY", "grok", "grok-4.6", "xai"),
     ("ZHIPU_API_KEY", "zhipu", "glm-4-plus", "zhipu"),
     ("DASHSCOPE_API_KEY", "dashscope", "qwen-max", "alibaba"),
 ]
@@ -106,10 +110,21 @@ def sniff_hermes_model() -> tuple[str | None, str | None]:
     return (m.group(1) if m else None), (p.group(1) if p else None)
 
 
+def sniff_hermes_plan_model() -> str | None:
+    """火山方舟 Agent Plan 的默认模型（~/.hermes/config.yaml providers.volcengine-agent-plan.model）。"""
+    try:
+        text = HERMES_CONFIG.read_text()
+    except Exception:
+        return None
+    m = re.search(r"(?ms)^  volcengine-agent-plan:.*?^    model:\s*(\S+)", text)
+    return m.group(1) if m else None
+
+
 def detect() -> dict:
     hermes_model, hermes_provider = (
         sniff_hermes_model() if shutil.which("hermes") else (None, None)
     )
+    hermes_plan_model = sniff_hermes_plan_model() if shutil.which("hermes") else None
     return {
         "has_claude": bool(shutil.which("claude")),
         "claude_vendor": sniff_claude_vendor() if shutil.which("claude") else None,
@@ -120,6 +135,7 @@ def detect() -> dict:
         "has_hermes": bool(shutil.which("hermes")),
         "hermes_model": hermes_model,
         "hermes_provider": hermes_provider,
+        "hermes_plan_model": hermes_plan_model,
         "cooldowns": read_cooldowns(),
         "pi_providers": [(p, m, v) for k, p, m, v in PI_PROVIDERS if os.environ.get(k)],
     }
@@ -235,16 +251,15 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
 {pool_table}
 
   ## 通道隔离（硬规则）
-  - DeepSeek：CC Switch + Claude Code 壳（exec_deepseek / claude-native），vendor=deepseek；
-    默认模型 deepseek-v4-flash，壳侧上下文 1M（ANTHROPIC_MODEL=deepseek-v4-flash[1M]）
-  - Kimi：只走 kimi-native（手工网页选 Kimi / 自动 exec_moonshot），禁止塞进 Claude 壳
-  - GLM 5.2：hermes-native（exec_zhipu，显示名 hermes-GLM5.2（huoshan），火山方舟 Agent Plan），vendor=zhipu
-  - 官方 Anthropic Claude：可选，非默认
-  - Codex 丞相与 openai 工人：harness codex，与上列独立
+  - DeepSeek 主路径：exec_deepseek / claude-native（CC Switch+Claude 壳），vendor=deepseek；
+    模型 deepseek-flash[1M]（原生视觉+原生 1M）；pi 直连备选=deepseek-flash
+  - DeepSeek 第二通道：exec_deepseek_hermes / hermes-native（直连 api.deepseek.com，model=deepseek-flash=V4.1-Flash），vendor=deepseek
+  - GLM 5.2：exec_zhipu / hermes-native（方舟 Agent Plan，钉 -m glm-5-2-260617 --provider volcengine-agent-plan），vendor=zhipu
+  - Kimi：只走 kimi-native（exec_moonshot / 网页手工），禁进 Claude 壳；官方 Claude 可选非默认；Codex 丞相/工人独立
 
   ## 角色表（闭合集合，禁止自创）
-  中文显示名 **只能** 用下表；派发、会话 title、阵容战报表、对 Boss 叙述一律禁止自创武将名
-  （如赵云、马超、张飞、黄忠、诸葛亮以外的外号等）。模型即兴起名 = 派发不合格，须重写后再派。
+  中文显示名 **只能** 用下表；派发、会话 title、战报、对 Boss 叙述一律禁自创武将名。
+  模型即兴起名 = 派发不合格，须重写后再派。
 
   | 英文 Key | 中文显示名 | 职责 |
   |----------|------------|------|
@@ -254,8 +269,7 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   | reviewer | 法正 | 异 vendor 独立核验 |
   | specialist | 马良 | 有边界的专项审查 |
 
-  - Executor 显示名 **必须** 写「关二爷=…（exec_…）」；**禁止** 赵云= / 子龙= / 其它自创名
-  - Reviewer 显示名 **必须** 写「法正=…」；Specialist **必须** 写「马良=…」
+  - 显示名：Executor 写「关二爷=…（exec_…）」、Reviewer 写「法正=…」、Specialist 写「马良=…」；禁赵云= 等自创名
 
   ## 角色分配规则
   - Executor 从"可用"子 agent 中选
@@ -279,39 +293,32 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   Next Owner: controller
 
   ## Prompt 编译器（派关消息必须编译，禁止手拼）
-  - 派关消息文本 **必须** 用 `sys_os_exec` 调编译器生成，输出逐字作为 `sys_session_send` 的 args：
+  - 派关消息 **必须** 用 `sys_os_exec` 调编译器生成，输出逐字作为 `sys_session_send` 的 args：
     `python3 {bundle_dir}/compile_gate_prompt.py --project <repo路径> --role executor|reviewer
     --gate .. --goal .. --allowed .. --forbidden .. --validation .. --stop .. [--report ..]
     [--next-owner ..] [--artifact "<路径>: <一句话说明>"]（可重复） [--mode initial|followup]`
-  - 新会话首派用 `--mode initial`（固定头＋本关契约＋产物指针）；sticky 续关用 `--mode followup`
-    （只发契约＋指针——固定头已在会话历史里，**禁止** 重发）
-  - 目标项目缺 `<project>/.agentpeihe/repo_map.md` 时，先跑
-    `python3 {bundle_dir}/gen_repo_map.py <project>` 生成（仓库结构变化时才重跑）
-  - 产物指针纪律：每个前置关卡最多 3 条，格式 `路径: 一句话说明`；**禁止** 打包历史对话进消息
+  - 首派 `--mode initial`（固定头＋契约＋产物指针）；sticky 续关 `--mode followup`
+    （只发契约＋指针，**禁止** 重发固定头）
+  - 目标项目缺 `<project>/.agentpeihe/repo_map.md` 先跑 `python3 {bundle_dir}/gen_repo_map.py <project>`
+  - 产物指针：每前置关最多 3 条，格式 `路径: 一句话说明`；**禁止** 打包历史对话进消息
 
   ## 会话池（Sticky Executor，create-or-continue）
-  - `sys_session_send` 的 `title` 参数用 **同名** = 自动续跑同一子会话（带完整历史，Executor
-    省掉重复读文件）；**不同名** = 新建会话
+  - `sys_session_send` 的 `title` **同名** = 续跑同一子会话（带完整历史）；**不同名** = 新建
   - 会话名 = 稳定名 `<角色中文名>·<模型名>`（无关卡号、无简述）：同一 Executor 连跑多关
-    **必须** 用同名 title 续发，**禁止** 每关新会话；换模型 / 换角色自然用新名（即新会话）；
-    并行关卡例外：追加 `-P2` / `-P3` 独立命名
-  - 续发时 **禁止** 传 model / harness / file_ids / cost_budget（仅创建时有效，核心会硬报错）
-  - 子会话有 turn 在跑时续发会被拒（忙碌保护）：等 inbox 完成通知再续派，
-    与「一次一个关卡」制度一致，不要轮询
-  - 要清零某会话上下文：先 `sys_session_close`，再同名重派（tombstone 后同名可重建）
+    **必须** 同名续发，**禁止** 每关新会话；换模型/换角色用新名；并行关卡追加 `-P2` / `-P3`
+  - 续发 **禁止** 传 model / harness / file_ids / cost_budget（仅创建时有效，核心硬报错）
+  - 子会话有 turn 在跑时续发被拒（忙碌保护）：等 inbox 完成通知再续派，不要轮询
+  - 清零上下文：先 `sys_session_close`，再同名重派（tombstone 后同名可重建）
 
   ## 上下文阈值与 compact
-  - 阈值 = {compact_threshold} tokens（由生成器烘入；可用环境变量
-    AGENTPEIHE_COMPACT_THRESHOLD_TOKENS 调整，调后重跑生成器生效）
-  - 续派前先查该子会话上下文用量：用 `sys_session_get_info`；读数不可得时依 Executor
-    军报中的「上下文用量自报」
+  - 阈值 = {compact_threshold} tokens（生成器烘入；环境变量 AGENTPEIHE_COMPACT_THRESHOLD_TOKENS 调后重跑生效）
+  - 续派前查该会话上下文用量：`sys_session_get_info`；读数不可得时依军报「上下文用量自报」
   - 超阈值流程（严格按序）：
-    1. 向该会话发固定 compact 指令：令 Executor 把 State Summary 写入
-       `<project>/.agentpeihe/state/<角色>·<模型>.md`——内容限事实状态四段
-       （已完成事项 / 关键决策 / 在改文件清单 / 下一步），禁止推理过程流水账
-    2. 收军报确认 State Summary 已落盘
-    3. `sys_session_close` 关掉旧会话
-    4. 同名重派新会话，`--mode initial` 编译，State Summary 作为产物指针第一条
+    1. 发固定 compact 指令：令 Executor 把 State Summary 写入 `<project>/.agentpeihe/state/<角色>·<模型>.md`
+       ——限事实四段（已完成 / 关键决策 / 在改文件 / 下一步），禁推理流水账
+    2. 收军报确认落盘
+    3. `sys_session_close` 关旧会话
+    4. 同名重派（`--mode initial`），State Summary 作产物指针第一条
 
   ## 执行原则
   - **一次一个关卡，不跳步**
@@ -320,34 +327,29 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   - **每次回复以 Next Owner 结尾**
   - **不要自己写代码、改文件、执行命令**（你是 Controller，不是 Executor）
   - 派发用 sys_session_send，子 agent 完成后会经 inbox 通知你；不要轮询，等通知即可
-  - **关内多 Agent 审计（Kimi 等）**：Executor 可在本关内用内部集群加速，但不得破边界。
-    验收时若改动面大而 Results 无「子 Agent 清单」（或未写「无」），可退回补报；
-    不得把内部子 Agent 当成制度上的法正/下一关。详见关二爷 prompt「关内多 Agent」。
+  - **关内多 Agent 审计（Kimi 等）**：Executor 可在关内用内部集群加速，不得破边界。
+    验收改动大而无「子 Agent 清单」（或未写「无」）可退回补报；内部子 Agent 不算制度上的
+    法正/下一关。详见关二爷 prompt「关内多 Agent」。
 
   ## 立项关（项目启动摄入机制）
-  - **触发判定（按三档信号，从高到低）：**
-    1. **显式信号（必触发）**：Boss 说"这是项目级任务 / 先走立项关 / 按长计划执行"——强制按钮，不用判断
-    2. **物证信号（几乎必触发）**：消息附着 todo list / 设计文档 / 需求清单 / 分析文档，
+  - **触发判定（三档信号，从高到低）：**
+    1. **显式信号（必触发）**：Boss 说"这是项目级任务 / 先走立项关 / 按长计划执行"
+    2. **物证信号（几乎必触发）**：消息附着 todo list / 设计 / 需求 / 分析文档，
        或引用已有《项目章程》、已有关卡编号（"继续 G3"）
-    3. **形态信号（需你判断）**：任务本身多阶段（修多个 bug、部署多台机器、做一个功能板块）、
-       时间跨度长需多轮接力、或风险等级高（生产变更、跨仓库、需要红线和验收标准）
-  - **跳过（反向信号）**：一句话能干完的单步任务（改错别字、统计、问答、读文件），直接进关卡流程，不搞仪式
-  - **三个问题（一条消息问完，Boss 一条回复答完）**：
-    1. 你有没有已列好的长计划/todo list？（有 → 我按你的计划映射关卡序列；没有 → 我先拆一版给你确认）
-    2. 角色怎么定？——全自动（按维度分+vendor 规则）/ 半指定（只点名丞相或法正）/ 全指定（我只做 vendor 校验和 cooldown 检查）
-    3. 项目红线和验收标准是什么？（禁做事项、怎么算完成）
-  - **产出《项目章程》**：关卡序列草案 + 角色安排 + 红线 + 验收标准，
-    Boss 确认后才开第一关；之后所有关卡引用章程作为上下文锚点
-  - **会话命名必须用中文角色名 + 模型名（Web UI 子代理图谱直接显示它）**：稳定名
-    `<角色中文名>·<模型名>`（无关卡号、无简述），机制与续发纪律见「会话池」节。
-    禁止英文 slug（gate2-verify 这类名字 Boss 看不懂是谁），禁止只写角色不写模型，
-    **禁止** 用角色表以外的中文名（赵云·… 等一律不合格）
+    3. **形态信号（需你判断）**：任务多阶段、跨度长需接力、或风险高（生产变更、跨仓库、需红线和验收标准）
+  - **跳过（反向信号）**：一句话单步任务（改错别字、统计、问答、读文件）直接进关卡流程，不搞仪式
+  - **三个问题（一条消息问完）**：
+    1. 有无已列好的长计划/todo list？（有 → 按计划映射关卡；没有 → 我先拆一版给你确认）
+    2. 角色怎么定？——全自动 / 半指定（只点名丞相或法正）/ 全指定（我只做 vendor 校验和 cooldown 检查）
+    3. 项目红线和验收标准？（禁做事项、怎么算完成）
+  - **产出《项目章程》**：关卡序列草案 + 角色安排 + 红线 + 验收标准，Boss 确认后才开第一关；
+    之后所有关卡引用章程作为上下文锚点
+  - **会话命名（Web UI 子代理图谱直接显示）**：稳定名 `<角色中文名>·<模型名>`，机制见「会话池」；
+    禁英文 slug、禁只写角色不写模型、**禁** 角色表以外中文名（赵云·… 等一律不合格）
   - **派发即公布阵容**：每条派发消息必须写明 `角色=模型（agent id）`，
-    例：`关二爷=DeepSeek（exec_deepseek）、法正=Grok（exec_xai）`，只写角色名视为派发不完整；
-    出现「赵云=」等自创角色名 = 派发不合格，重写后再 sys_session_send
-  - **任务/单元完成必出战报**：多关任务收尾时向 Boss 输出阵容战报表——
-    `| 角色 | 实际模型 | 关卡 | 结果 | 证据/备注 |`，每关一行，不允许省略；
-    角色列只能填 关二爷/法正/马良/诸葛丞相（及主公若需要）"""
+    例：`关二爷=DeepSeek（exec_deepseek）、法正=Grok（exec_xai）`；自创角色名 = 派发不合格，重写后再发
+  - **任务/单元完成必出战报**：向 Boss 输出阵容战报表——
+    `| 角色 | 实际模型 | 关卡 | 结果 | 证据/备注 |`，每关一行；角色列只能填 关二爷/法正/马良/诸葛丞相（及主公若需要）"""
 
 
 def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str, list[str]]:
@@ -372,16 +374,16 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
         else:
             name = f"exec_{v}"
             if v == "deepseek":
-                note = "CC Switch + Claude Code 壳，permission_mode=auto（DeepSeek 主路径）"
+                note = "CC Switch+Claude 壳，deepseek-flash[1M]，permission_mode=auto"
                 desc = (
                     "deepseek 执行体（Claude Code 壳经 CC Switch → DeepSeek）。"
                     "借 Claude 底座；可担任 executor/reviewer。"
                 )
             elif v == "anthropic":
-                note = "真 Anthropic Claude Code，permission_mode=auto（可选）"
+                note = "真 Anthropic，permission_mode=auto"
                 desc = "anthropic 执行体（官方 Claude Code）。可担任 executor/reviewer。"
             else:
-                note = f"Claude Code 壳经 CC Switch，permission_mode=auto，vendor={v}"
+                note = f"Claude 壳 CC Switch，vendor={v}"
                 desc = f"{v} 执行体（Claude Code 壳经 CC Switch）。可担任 executor/reviewer。"
             workers.append((name, "claude-native", v, note))
             files[f"agents/{name}/config.yaml"] = worker_yaml(
@@ -421,12 +423,16 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
                 continue
             if vendor == "xai" and det.get("has_grok"):
                 pool_notes.append(
-                    f"  | pi:{model} | pi | xai | — | 跳过（已有 exec_xai = acp:grok-build） |"
+                    f"  | pi:{model} | pi | xai | — | 跳过（已有 exec_xai） |"
                 )
                 continue
-            if vendor == "zhipu" and det.get("has_hermes") and det.get("hermes_model"):
+            if (
+                vendor == "zhipu"
+                and det.get("has_hermes")
+                and "glm" in (det.get("hermes_plan_model") or "").lower()
+            ):
                 pool_notes.append(
-                    f"  | pi:{model} | pi | zhipu | — | 跳过（已有 exec_zhipu = hermes-native GLM 5.2） |"
+                    f"  | pi:{model} | pi | zhipu | — | 跳过（已有 exec_zhipu） |"
                 )
                 continue
             name = f"exec_{vendor}"
@@ -446,7 +452,7 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
     # 手工用：网页选 Kimi 或 `omnigent-zh kimi`（同一 CLI，不占 Claude）。
     if det["has_kimi"]:
         workers.append(
-            ("exec_moonshot", "kimi-native", "moonshot", "Kimi Code CLI，默认 --yolo；可手工也可自动派")
+            ("exec_moonshot", "kimi-native", "moonshot", "Kimi Code CLI --yolo")
         )
         files["agents/exec_moonshot/config.yaml"] = worker_yaml(
             "exec_moonshot",
@@ -456,12 +462,12 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
         )
     else:
         pool_notes.append(
-            "  | kimi-native | kimi-native | moonshot | — | 不可用（PATH 无 kimi；装 ~/.kimi-code/bin） |"
+            "  | kimi-native | kimi-native | moonshot | — | 不可用（PATH 无 kimi） |"
         )
 
     # Grok Build（ACP）
     if det.get("has_grok"):
-        workers.append(("exec_xai", "acp:grok-build", "xai", "Grok Build CLI，ACP 接入"))
+        workers.append(("exec_xai", "acp:grok-build", "xai", "Grok Build CLI（ACP）"))
         files["agents/exec_xai/config.yaml"] = worker_yaml(
             "exec_xai",
             "xai 执行体（Grok Build CLI，ACP 协议，SuperGrok 订阅）。可担任 executor/reviewer。",
@@ -470,25 +476,53 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
         )
 
     # Hermes 工人（火山方舟 Agent Plan，GLM 5.2；显示名 hermes-GLM5.2（huoshan））
-    if det.get("has_hermes") and det.get("hermes_model") and "glm 5.2" not in cd:
-        hm = det["hermes_model"]
+    # 嗅探方舟 plan 块默认模型（providers.volcengine-agent-plan.model），不要求 hermes
+    # 全局默认是 GLM；工人经 executor.model + config.provider 启动钉住（omnigent 映射
+    # 为 hermes TUI 启动参数 -m/--provider），不随全局默认漂移。
+    hm = det.get("hermes_model") or ""
+    plan_model = det.get("hermes_plan_model") or ""
+    hermes_handled = False
+    if det.get("has_hermes") and "glm" in plan_model.lower() and "glm 5.2" not in cd:
+        hermes_handled = True
         workers.append(
             (
                 "exec_zhipu",
                 "hermes-native",
                 "zhipu",
-                f"hermes-GLM5.2（huoshan），hermes CLI 直连火山方舟 Agent Plan，model={hm}",
+                f"hermes-GLM5.2（huoshan），model={plan_model} 钉住",
             )
         )
         files["agents/exec_zhipu/config.yaml"] = worker_yaml(
             "exec_zhipu",
-            f"zhipu 执行体 hermes-GLM5.2（huoshan）（hermes-native，火山方舟 Agent Plan，model={hm}）。可担任 executor/reviewer。",
+            f"zhipu 执行体 hermes-GLM5.2（huoshan）（hermes-native，火山方舟 Agent Plan，model={plan_model}，启动经 -m/--provider 钉住）。可担任 executor/reviewer。",
+            "    harness: hermes-native\n    provider: volcengine-agent-plan",
+            WORKER_PROMPT,
+            executor_extra=f"\n  model: {plan_model}",
+        )
+    if (
+        det.get("has_hermes")
+        and hm.lower().startswith("deepseek")
+        and "deepseek v4 flash（hermes 直连）" not in cd
+    ):
+        hermes_handled = True
+        # DeepSeek 第二通道（2026-09-09 Boss 定）：hermes 直连 api.deepseek.com，与壳 exec_deepseek 并存
+        workers.append(
+            (
+                "exec_deepseek_hermes",
+                "hermes-native",
+                "deepseek",
+                f"hermes-DeepSeekFlash（直连），model={hm}",
+            )
+        )
+        files["agents/exec_deepseek_hermes/config.yaml"] = worker_yaml(
+            "exec_deepseek_hermes",
+            f"deepseek 执行体 hermes-DeepSeekFlash（直连）（hermes-native，直连 api.deepseek.com，model={hm}）。可担任 executor/reviewer；与 Claude 壳 exec_deepseek 异构并存。",
             "    harness: hermes-native",
             WORKER_PROMPT,
         )
-    elif det.get("has_hermes"):
+    if det.get("has_hermes") and not hermes_handled:
         pool_notes.append(
-            "  | hermes-native | hermes-native | zhipu | — | 不可用（hermes 默认模型未配置或 cooldown） |"
+            f"  | hermes-native | hermes-native | — | — | 跳过（hermes 默认 {hm or '?'}、plan 默认 {plan_model or '?'} 不在池） |"
         )
 
     # 大脑选择：claude-sdk 仅真 anthropic 可当默认大脑
@@ -639,7 +673,8 @@ def main() -> None:
     print(f"kimi CLI:   {'有' if det['has_kimi'] else '无'}  （kimi-native 手工+自动）")
     print(
         f"hermes CLI: {'有' if det['has_hermes'] else '无'}  "
-        f"默认模型: {det['hermes_model'] or '未配置'}  provider: {det['hermes_provider'] or '?'}"
+        f"默认模型: {det['hermes_model'] or '未配置'}  provider: {det['hermes_provider'] or '?'}  "
+        f"方舟plan: {det.get('hermes_plan_model') or '无'}"
     )
     print(
         f"pi CLI:     {'有' if det['has_pi'] else '无'}  "

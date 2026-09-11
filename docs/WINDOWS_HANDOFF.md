@@ -122,7 +122,7 @@ providers:
       base_url: https://api.deepseek.com/v1
       api_key: $DEEPSEEK_API_KEY
       models:
-        default: deepseek-v4-pro
+        default: deepseek-v4-flash
 ```
 
 `~/.bashrc` 追加：
