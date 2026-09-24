@@ -24,7 +24,8 @@
     exec_zhipu（显示名 hermes-GLM5.2（huoshan），vendor=zhipu），工人经 executor.model +
     config.provider 启动钉住（-m/--provider），不随 hermes 全局默认漂移
   - 官方 Anthropic Claude 模型：可选，大概率不用；仅 sniff=anthropic 时生成 exec_anthropic
-  - Codex 工人: harness codex headless；Codex 可做丞相（--brain codex）
+  - Codex 工人: harness codex headless；Codex 可做丞相（--brain codex）；--no-codex 压住 exec_openai 与 codex 大脑候选
+  - CodeBuddy 工人：ACP 协议（acp:codebuddy，command=codebuddy --acp），vendor=tencent，模型跟 CLI 默认
   - cooldown: 注册表 Scores 表 cooldown-until 未到期 → 该模型不出现在 tools
 """
 from __future__ import annotations
@@ -132,6 +133,7 @@ def detect() -> dict:
         "has_pi": bool(shutil.which("pi")),
         "has_kimi": bool(shutil.which("kimi")),
         "has_grok": bool(shutil.which("grok")),
+        "has_codebuddy": bool(shutil.which("codebuddy")),
         "has_hermes": bool(shutil.which("hermes")),
         "hermes_model": hermes_model,
         "hermes_provider": hermes_provider,
@@ -256,6 +258,7 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   - DeepSeek 第二通道：exec_deepseek_hermes / hermes-native（直连 api.deepseek.com，model=deepseek-flash=V4.1-Flash），vendor=deepseek
   - GLM 5.2：exec_zhipu / hermes-native（方舟 Agent Plan，钉 -m glm-5-2-260617 --provider volcengine-agent-plan），vendor=zhipu
   - Kimi：只走 kimi-native（exec_moonshot / 网页手工），禁进 Claude 壳；官方 Claude 可选非默认；Codex 丞相/工人独立
+  - CodeBuddy：exec_codebuddy / acp:codebuddy（ACP，模型跟 CLI 默认），vendor=tencent
 
   ## 角色表（闭合集合，禁止自创）
   中文显示名 **只能** 用下表；派发、会话 title、战报、对 Boss 叙述一律禁自创武将名。
@@ -352,7 +355,7 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
     `| 角色 | 实际模型 | 关卡 | 结果 | 证据/备注 |`，每关一行；角色列只能填 关二爷/法正/马良/诸葛丞相（及主公若需要）"""
 
 
-def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str, list[str]]:
+def build(det: dict, brain: str | None, no_codex: bool = False) -> tuple[dict[str, str], list[str], str, list[str]]:
     """返回 ({相对路径: 内容}, workers, brain, pool_notes)。"""
     files: dict[str, str] = {}
     workers: list[tuple[str, str, str, str]] = []  # (name, harness, vendor, note)
@@ -394,8 +397,8 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
             )
             claude_shell_vendors.add(v)
 
-    # Codex 工人（headless codex exec）
-    if det["has_codex"] and "codex current model" not in cd:
+    # Codex 工人（headless codex exec）；--no-codex 时整个跳过
+    if det["has_codex"] and not no_codex and "codex current model" not in cd:
         workers.append(
             (
                 "exec_openai",
@@ -475,6 +478,18 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
             WORKER_PROMPT,
         )
 
+    # CodeBuddy（ACP，模型跟 CLI 默认，vendor=tencent）
+    if det.get("has_codebuddy"):
+        workers.append(
+            ("exec_codebuddy", "acp:codebuddy", "tencent", "CodeBuddy CLI（ACP，模型跟 CLI 默认）")
+        )
+        files["agents/exec_codebuddy/config.yaml"] = worker_yaml(
+            "exec_codebuddy",
+            "tencent 执行体（CodeBuddy CLI，ACP 协议，模型跟 CLI 默认）。可担任 executor/reviewer。",
+            "    harness: acp:codebuddy",
+            WORKER_PROMPT,
+        )
+
     # Hermes 工人（火山方舟 Agent Plan，GLM 5.2；显示名 hermes-GLM5.2（huoshan））
     # 嗅探方舟 plan 块默认模型（providers.volcengine-agent-plan.model），不要求 hermes
     # 全局默认是 GLM；工人经 executor.model + config.provider 启动钉住（omnigent 映射
@@ -528,7 +543,7 @@ def build(det: dict, brain: str | None) -> tuple[dict[str, str], list[str], str,
     # 大脑选择：claude-sdk 仅真 anthropic 可当默认大脑
     if brain is None:
         for b in BRAIN_PRIORITY:
-            if b == "codex" and det["has_codex"] and "codex current model" not in cd:
+            if b == "codex" and det["has_codex"] and not no_codex and "codex current model" not in cd:
                 brain = b
                 break
             if (
@@ -626,22 +641,45 @@ tools:
     return files, [n for n, _, _, _ in workers], brain, pool_notes
 
 
+ACP_AGENT_ENTRIES = [
+    ("grok agent stdio", "  - {name: Grok Build, command: grok agent stdio}"),
+    ("codebuddy --acp", "  - {name: CodeBuddy, command: codebuddy --acp}"),
+]
+
+
 def ensure_acp_config(dry_run: bool = False) -> None:
-    """~/.omnigent/config.yaml 缺 acp agents 块时补上（Grok Build 接入的前提）。"""
+    """~/.omnigent/config.yaml 的 acp.agents 按条目幂等补齐（ACP 执行体接入的前提）。"""
     cfg = Path.home() / ".omnigent/config.yaml"
-    block = (
-        "\n# ACP 协议接入的执行体（各自管自己的登录态，omnigent 不存凭据）\n"
-        "acp:\n  agents:\n    - {name: Grok Build, command: grok agent stdio}\n"
-    )
     existing = cfg.read_text() if cfg.exists() else ""
-    if "acp:" in existing and "grok agent stdio" in existing:
+    missing = [line for marker, line in ACP_AGENT_ENTRIES if marker not in existing]
+    if not missing:
         print("acp 配置块已存在，跳过")
         return
-    print(f"{'[dry] ' if dry_run else ''}向 {cfg} 追加 acp agents 块")
-    if not dry_run:
-        cfg.parent.mkdir(parents=True, exist_ok=True)
+    print(f"{'[dry] ' if dry_run else ''}向 {cfg} 补 acp agents 条目: {missing}")
+    if dry_run:
+        return
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    if "acp:" not in existing:
         with cfg.open("a") as f:
-            f.write(block)
+            f.write(
+                "\n# ACP 协议接入的执行体（各自管自己的登录态，omnigent 不存凭据）\n"
+                "acp:\n  agents:\n" + "\n".join(missing) + "\n"
+            )
+        return
+    # acp 块已在：把缺失条目插到 agents 列表末尾（跳过列表项及其更深缩进的续行）
+    lines = existing.splitlines()
+    acp_idx = next(i for i, l in enumerate(lines) if l.startswith("acp:"))
+    agents_idx = next(
+        i for i in range(acp_idx, len(lines)) if lines[i].strip().startswith("agents:")
+    )
+    insert_at = agents_idx + 1
+    while insert_at < len(lines):
+        line = lines[insert_at]
+        if not line.strip() or len(line) - len(line.lstrip()) < 2:
+            break
+        insert_at += 1
+    lines[insert_at:insert_at] = missing
+    cfg.write_text("\n".join(lines) + "\n")
 
 
 def _purge_stale_agents(out: Path, keep: set[str], dry_run: bool) -> None:
@@ -662,6 +700,7 @@ def _purge_stale_agents(out: Path, keep: set[str], dry_run: bool) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--brain", choices=["claude-sdk", "codex", "pi", "kimi"], default=None)
+    ap.add_argument("--no-codex", action="store_true", help="codex 不进池（工人与大脑候选都跳过）")
     ap.add_argument("--out", default=str(Path.home() / ".omnigent/agents/controller"))
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
@@ -671,6 +710,7 @@ def main() -> None:
     print(f"claude CLI: {'有' if det['has_claude'] else '无'}  实际 vendor: {det['claude_vendor']}")
     print(f"codex CLI:  {'有' if det['has_codex'] else '无'}  cooldown: {det['cooldowns'] or '无'}")
     print(f"kimi CLI:   {'有' if det['has_kimi'] else '无'}  （kimi-native 手工+自动）")
+    print(f"codebuddy CLI: {'有' if det['has_codebuddy'] else '无'}  （ACP 工人 exec_codebuddy）")
     print(
         f"hermes CLI: {'有' if det['has_hermes'] else '无'}  "
         f"默认模型: {det['hermes_model'] or '未配置'}  provider: {det['hermes_provider'] or '?'}  "
@@ -681,13 +721,13 @@ def main() -> None:
         f"API providers: {[p for p, _, _ in det['pi_providers']] or '无'}"
     )
 
-    files, workers, brain, notes = build(det, args.brain)
+    files, workers, brain, notes = build(det, args.brain, no_codex=args.no_codex)
     print(f"\n== 生成计划 ==\n大脑: {brain}\n工人: {workers}")
     if notes:
         print("备注:")
         for n in notes:
             print(n)
-    if det.get("has_grok"):
+    if det.get("has_grok") or det.get("has_codebuddy"):
         ensure_acp_config(dry_run=args.dry_run)
     out = Path(args.out)
     keep = set(workers)

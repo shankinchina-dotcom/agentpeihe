@@ -4,6 +4,11 @@
 
 ---
 
+## 2026-09-24
+
+- **feat · CodeBuddy 入池（exec_codebuddy，vendor=tencent）**：背景是 hermes 连火山 Coding Plan 额度用尽。CodeBuddy CLI（2.157.0）原生支持 ACP（`codebuddy --acp`，stdio ndJson），实测 initialize → session/new（默认模型 hy4-preview-f，x0.00 credits）→ session/prompt 全链路通过；omnigent 通用 acp harness 零代码接入——`~/.omnigent/config.yaml` 的 acp.agents 加 `{name: CodeBuddy, command: "codebuddy --acp"}`（harness id `acp:codebuddy`）。生成器新增 has_codebuddy 检测 + exec_codebuddy 工人块（比照 exec_xai/Grok ACP 写法），通道隔离节加 CodeBuddy 行；`ensure_acp_config` 改按条目幂等补齐。模型跟 CLI 默认（不钉）。另加 `--no-codex` 开关（Boss 裁：codex ChatGPT 登录不进池），压住 exec_openai 工人与 codex 大脑候选。验证：AcpExecutor 直驱 `codebuddy --acp` 实回「派单成功」；`acp_agents()` / `harness_catalog()` 均见 `acp:codebuddy`；`--brain pi --no-codex` 重跑后池 = exec_deepseek / exec_moonshot / exec_xai / exec_codebuddy / exec_zhipu / exec_deepseek_hermes，大脑仍是 pi(deepseek-flash)。
+- **ops · GLM 5.2 冷却下架（exec_zhipu 出池）**：火山方舟 Agent Plan 到期不续费，注册表 GLM 5.2 行加 `cooldown-until: 2026-12-31`（恢复时删除重跑即可）；重跑生成器后池不再含 exec_zhipu，bundle 目录同步 purge。controller v30。另实测 CodeBuddy 模型选择机制：session/new 的 model 字段被忽略、session/set_model 支持但 omnigent executor 不调用、`--acp --model <id>` 启动参数钉住生效（exec_codebuddy 如需钉模型改 acp command 即可）。
+
 ## 2026-09-11
 
 - **feat · DeepSeek V4.1-Flash 切换（规范名 deepseek-flash，官方 2026-09-10 发布）**：0731 与 vision-exp 官方双双下线（旧名暂时路由 V4.1）——三通道统一切规范名：~/.claude/settings.json 全别名 `deepseek-flash[1M]`、~/.hermes/config.yaml `default: deepseek-flash`、生成器 docstring/pi 备选/通道隔离/pool 注释同步（两仓，prompt 9,091→9,042B）。V4.1 原生视觉 + 原生 1M（输出 384K）、Terminal-Bench 2.1 90.6（vision-exp 83.9）、输入价 2元/百万（高峰）。注册表 rev 40→41：V4.1 新身份继承 vision-exp 后端 60（Boss 钦定留痕，沿 vision-exp 继承 flash 先例），vision-exp / 0731 / hermes 直连三旧身份标 deprecated。重跑生成器 + 带 `--agent` 重启（controller v28，description 2026-09-11）。烟测：Anthropic 端点 `deepseek-flash[1M]` 文本实回「收到」+ 1x1 PNG 实回「粉色」（model 回显无降级）；hermes chat 实答 4。背景：旧纪元会话 09-10 15:15 经 UI 删除（G63 军报前提作废），Boss 改裁「现在就切」；G64 根修向新丞相（K3）重派 + G65 V4.1 校准关立项。

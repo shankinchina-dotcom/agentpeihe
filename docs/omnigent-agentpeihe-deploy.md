@@ -278,10 +278,11 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 
 生成器自动做的事：
 
-- 检测本机 CLI（claude / codex / kimi / pi / grok）与 API key
+- 检测本机 CLI（claude / codex / kimi / pi / grok / hermes / codebuddy）与 API key
 - **嗅探 claude CLI 的真实后端**（读 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL`，CC Switch 壳按实际 vendor 算，不按 CLI 名）
 - 读注册表 `~/.agent-collaboration/model-capability-registry.md` 的 `cooldown-until:`，冷却期模型不出现在工人池
-- 按 harness 特性配好工人参数：claude-native 配 `permission_mode: auto`（headless 免确认）、codex-native 配 `yolo: true`、kimi-native 生成 `exec_moonshot`（omnigent 默认 `--yolo` 免审批；角色 prompt 经会话级 AGENTS.md 注入，见 §4.3.2）、pi 工人的 `model`/`auth` 放 `executor` 顶层并显式绑定 provider、grok CLI 生成 `acp:grok-build` 工人并补 `~/.omnigent/config.yaml` 的 acp 配置块（角色 prompt 经 `--agent-profile` 注入，见 §4.3.2）
+- 按 harness 特性配好工人参数：claude-native 配 `permission_mode: auto`（headless 免确认）、codex-native 配 `yolo: true`、kimi-native 生成 `exec_moonshot`（omnigent 默认 `--yolo` 免审批；角色 prompt 经会话级 AGENTS.md 注入，见 §4.3.2）、pi 工人的 `model`/`auth` 放 `executor` 顶层并显式绑定 provider、grok CLI 生成 `acp:grok-build` 工人并补 `~/.omnigent/config.yaml` 的 acp 配置块（角色 prompt 经 `--agent-profile` 注入，见 §4.3.2）、codebuddy CLI 生成 `acp:codebuddy` 工人（ACP；模型跟 CLI 默认，钉模型在 acp command 加 `--model <id>`，session/new 的 model 字段会被忽略）
+- codex 可用 `--no-codex` 压制（工人与大脑候选都跳过；2026-09-24 Boss 裁：ChatGPT 登录不进池）
 - 生成 Controller prompt：可用池表（含实际 vendor）、异 vendor 互审规则、9 字段契约、中文会话命名规则
 
 ### 4.2 第一期实测阵型（供对照）
@@ -311,15 +312,16 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 
 | 通道 | 正确接法 | 禁止 |
 |------|----------|------|
-| 丞相 Controller | 默认 `harness: codex` | 用 CC Switch 把大脑指到 Kimi |
+| 丞相 Controller | 优先级 codex → claude-sdk → pi；当前实例 pi（deepseek-flash）；codex 可用 `--no-codex` 压制 | 用 CC Switch 把大脑指到 Kimi |
 | DeepSeek 工人 | **CC Switch + Claude Code 壳** → `exec_deepseek` + `claude-native`（借 Claude 底座） | 默认 **`deepseek-v4-flash-vision-exp[1M]`**（vision-exp 图片输入 + 1M 上下文，2026-09-09 起；pi 直连备选仍为无后缀稳定版 `deepseek-v4-flash`）；`~/.claude/settings.json` 的 `ANTHROPIC_MODEL` 须带 `[1M]`，否则 TUI 常显示 200k。勿再默认 pi 直连当主路径；勿与 Kimi 共用 Claude 壳 |
 | DeepSeek 工人（第二通道） | `exec_deepseek_hermes` + `hermes-native`（hermes CLI 直连 api.deepseek.com，model=`deepseek-v4-flash` 即官方 V4-Flash-0731，显示名 hermes-DeepSeekFlash（直连）） | 2026-09-09 起入池，与壳 exec_deepseek（vision-exp）异构并存；仅在 hermes 默认模型为 DeepSeek 时自动生成 |
 | Kimi 手工 | 网页选 Kimi 或 `omnigent-zh kimi` | 占 Claude / CC Switch |
 | Kimi 自动 | `exec_moonshot` + `kimi-native`（默认 `--yolo`） | `claude-native` 伪装 moonshot |
 | 官方 Anthropic Claude | 可选；大概率不用 | — |
-| GLM 5.2 工人 | `exec_zhipu` + `hermes-native`（火山方舟 Agent Plan；启动钉住 `-m glm-5-2-260617 --provider volcengine-agent-plan`，显示名 hermes-GLM5.2（huoshan）） | 2026-09-09 恢复入池：嗅探 plan 块默认模型生成，不随 hermes 全局默认漂移；与 pi zhipu 去重 |
+| GLM 5.2 工人 | ~~`exec_zhipu` + `hermes-native`~~ **cooldown-until 2026-12-31（下架中）**：火山方舟 Agent Plan 2026-09-23 到期不续费，注册表冷却条目压住自动入池；恢复时删 cooldown 重跑生成器 | 冷却期勿手工派 exec_zhipu（额度已尽） |
+| CodeBuddy 工人 | `exec_codebuddy` + `acp:codebuddy`（`codebuddy --acp`，模型跟 CLI 默认 hy4-preview-f；钉模型改 acp command 加 `--model`） | 2026-09-24 起入池，vendor=tencent；session/new 传 model 无效，勿依赖 omnigent send_model |
 
-换池：`python3 agentpeihe/gen_controller_bundle.py --brain codex`，然后重注册 server。
+换池：`python3 agentpeihe/gen_controller_bundle.py [--brain pi] [--no-codex]`，然后带 `--agent` 重启 server 重注册。
 
 > CC Switch 的后端由 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL` 决定，生成器会嗅探并按真实 vendor 配池。注意 shell 级的 `ANTHROPIC_*` export 会**盖过** settings.json——交互 shell 里残留的 export 必须先 `unset`（或像本机 zshrc 那样只放在函数级 launcher 里）。
 
@@ -328,7 +330,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 丞相大脑可直接挂 kimi-native（网页：智能体=丞相，执行器=Kimi），与 codex/claude 大脑能力对齐：
 
 - **角色注入**：agent instructions 写入会话级 `$KIMI_CODE_HOME/AGENTS.md`（读全局合并、只写会话 home，全局与 workspace 零污染）。grok 工人走 `--agent-profile`、hermes 工人走 per-session `HERMES_HOME/SOUL.md`，同日接通。
-- **调度通道**：spec 含 `tools.agents`/`spawn` 的 kimi 会话在 launch 前自动起 serve-mcp relay，会话级 `mcp.json` 挂 `mcp__omnigent__*` 工具——丞相可 `sys_session_send` 派全部五个 exec_* 工人（DeepSeek/GPT/Grok/GLM/Kimi），子会话按阵容可见性命名挂侧栏。relay 失败时兜底自动开 kimi swarm 模式（内置 AgentSwarm，同 vendor）。kimi 原生 Agent/AgentSwarm 子代理流程不受影响。
+- **调度通道**：spec 含 `tools.agents`/`spawn` 的 kimi 会话在 launch 前自动起 serve-mcp relay，会话级 `mcp.json` 挂 `mcp__omnigent__*` 工具——丞相可 `sys_session_send` 派全部 exec_* 工人（当前：DeepSeek×2/Grok/Kimi/CodeBuddy），子会话按阵容可见性命名挂侧栏。relay 失败时兜底自动开 kimi swarm 模式（内置 AgentSwarm，同 vendor）。kimi 原生 Agent/AgentSwarm 子代理流程不受影响。
 - **唤醒链**：新增 kimi idle poster（`kimi_native_status`），子代理完成自动唤醒丞相验收；同 workdir 父子会话的 forwarder wire 锁定已修（按 createdAt 就近匹配）。
 - **前提**：kimi 侧走 yolo（全局默认或 `--yolo`），MCP 工具免审批实测通过；非 yolo 模式的审批行为未测。
 
