@@ -224,7 +224,7 @@ providers:
       base_url: https://api.x.ai/v1
       api_key: $GROK_API_KEY
       models:
-        default: grok-4.6
+        default: grok-4.7
 
   # 千问 API（DashScope）
   dashscope:
