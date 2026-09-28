@@ -25,7 +25,8 @@
     config.provider 启动钉住（-m/--provider），不随 hermes 全局默认漂移
   - 官方 Anthropic Claude 模型：可选，大概率不用；仅 sniff=anthropic 时生成 exec_anthropic
   - Codex 工人: harness codex headless；Codex 可做丞相（--brain codex）；--no-codex 压住 exec_openai 与 codex 大脑候选
-  - CodeBuddy 工人：ACP 协议（acp:codebuddy，command=codebuddy --acp），vendor=tencent，模型跟 CLI 默认
+  - CodeBuddy 工人：ACP 协议（acp:codebuddy，command=codebuddy --acp），模型跟 CLI 默认
+    （codebuddy config set -g model <id> 改全局默认），vendor 按默认模型实际后端判定
   - cooldown: 注册表 Scores 表 cooldown-until 未到期 → 该模型不出现在 tools
 """
 from __future__ import annotations
@@ -121,6 +122,38 @@ def sniff_hermes_plan_model() -> str | None:
     return m.group(1) if m else None
 
 
+def sniff_codebuddy_model() -> str | None:
+    """CodeBuddy CLI 配置的默认模型（codebuddy config get model）。"""
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["codebuddy", "config", "get", "model"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        model = out.stdout.strip().splitlines()[-1].strip() if out.stdout.strip() else ""
+        return model or None
+    except Exception:
+        return None
+
+
+def codebuddy_vendor(model: str | None) -> str:
+    """CodeBuddy 是多模型网关，vendor 按默认模型的实际后端判定。"""
+    m = (model or "").lower()
+    for key, vendor in (
+        ("deepseek", "deepseek"),
+        ("glm", "zhipu"),
+        ("kimi", "moonshot"),
+        ("minimax", "minimax"),
+        ("hy", "tencent"),
+    ):
+        if key in m:
+            return vendor
+    return "tencent"
+
+
 def detect() -> dict:
     hermes_model, hermes_provider = (
         sniff_hermes_model() if shutil.which("hermes") else (None, None)
@@ -134,6 +167,7 @@ def detect() -> dict:
         "has_kimi": bool(shutil.which("kimi")),
         "has_grok": bool(shutil.which("grok")),
         "has_codebuddy": bool(shutil.which("codebuddy")),
+        "codebuddy_model": sniff_codebuddy_model() if shutil.which("codebuddy") else None,
         "has_hermes": bool(shutil.which("hermes")),
         "hermes_model": hermes_model,
         "hermes_provider": hermes_provider,
@@ -258,7 +292,7 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   - DeepSeek 第二通道：exec_deepseek_hermes / hermes-native（直连 api.deepseek.com，model=deepseek-flash=V4.1-Flash），vendor=deepseek
   - GLM 5.2：exec_zhipu / hermes-native（方舟 Agent Plan，钉 -m glm-5-2-260617 --provider volcengine-agent-plan），vendor=zhipu
   - Kimi：只走 kimi-native（exec_moonshot / 网页手工），禁进 Claude 壳；官方 Claude 可选非默认；Codex 丞相/工人独立
-  - CodeBuddy：exec_codebuddy / acp:codebuddy（ACP，模型跟 CLI 默认），vendor=tencent
+  - CodeBuddy：exec_codebuddy / acp:codebuddy（ACP），vendor 按默认模型实际后端（{codebuddy_vendor}）
 
   ## 角色表（闭合集合，禁止自创）
   中文显示名 **只能** 用下表；派发、会话 title、战报、对 Boss 叙述一律禁自创武将名。
@@ -478,14 +512,21 @@ def build(det: dict, brain: str | None, no_codex: bool = False) -> tuple[dict[st
             WORKER_PROMPT,
         )
 
-    # CodeBuddy（ACP，模型跟 CLI 默认，vendor=tencent）
+    # CodeBuddy（ACP，模型跟 CLI 默认，vendor 按默认模型实际后端判定）
     if det.get("has_codebuddy"):
+        cb_model = det.get("codebuddy_model")
+        cb_vendor = codebuddy_vendor(cb_model)
         workers.append(
-            ("exec_codebuddy", "acp:codebuddy", "tencent", "CodeBuddy CLI（ACP，模型跟 CLI 默认）")
+            (
+                "exec_codebuddy",
+                "acp:codebuddy",
+                cb_vendor,
+                f"CodeBuddy CLI（ACP，默认 {cb_model or 'CLI 默认'}）",
+            )
         )
         files["agents/exec_codebuddy/config.yaml"] = worker_yaml(
             "exec_codebuddy",
-            "tencent 执行体（CodeBuddy CLI，ACP 协议，模型跟 CLI 默认）。可担任 executor/reviewer。",
+            f"{cb_vendor} 执行体（CodeBuddy CLI，ACP 协议，默认模型 {cb_model or 'CLI 默认'}）。可担任 executor/reviewer。",
             "    harness: acp:codebuddy",
             WORKER_PROMPT,
         )
@@ -613,7 +654,7 @@ executor:
     # 大脑：{brain_note}
 
 prompt: |
-{CONTROLLER_PROMPT_TMPL.format(pool_table=pool_table, bundle_dir=BUNDLE_DIR, compact_threshold=COMPACT_THRESHOLD_TOKENS)}
+{CONTROLLER_PROMPT_TMPL.format(pool_table=pool_table, bundle_dir=BUNDLE_DIR, compact_threshold=COMPACT_THRESHOLD_TOKENS, codebuddy_vendor=f"{det.get('codebuddy_model') or 'CLI 默认'}→{codebuddy_vendor(det.get('codebuddy_model'))}")}
 
 os_env:
   type: caller_process
@@ -710,7 +751,7 @@ def main() -> None:
     print(f"claude CLI: {'有' if det['has_claude'] else '无'}  实际 vendor: {det['claude_vendor']}")
     print(f"codex CLI:  {'有' if det['has_codex'] else '无'}  cooldown: {det['cooldowns'] or '无'}")
     print(f"kimi CLI:   {'有' if det['has_kimi'] else '无'}  （kimi-native 手工+自动）")
-    print(f"codebuddy CLI: {'有' if det['has_codebuddy'] else '无'}  （ACP 工人 exec_codebuddy）")
+    print(f"codebuddy CLI: {'有' if det['has_codebuddy'] else '无'}  默认模型: {det.get('codebuddy_model') or '?'}  （ACP 工人 exec_codebuddy）")
     print(
         f"hermes CLI: {'有' if det['has_hermes'] else '无'}  "
         f"默认模型: {det['hermes_model'] or '未配置'}  provider: {det['hermes_provider'] or '?'}  "

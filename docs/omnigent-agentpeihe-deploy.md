@@ -319,7 +319,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | Kimi 自动 | `exec_moonshot` + `kimi-native`（默认 `--yolo`） | `claude-native` 伪装 moonshot |
 | 官方 Anthropic Claude | 可选；大概率不用 | — |
 | GLM 5.2 工人 | ~~`exec_zhipu` + `hermes-native`~~ **cooldown-until 2026-12-31（下架中）**：火山方舟 Agent Plan 2026-09-23 到期不续费，注册表冷却条目压住自动入池；恢复时删 cooldown 重跑生成器 | 冷却期勿手工派 exec_zhipu（额度已尽） |
-| CodeBuddy 工人 | `exec_codebuddy` + `acp:codebuddy`（`codebuddy --acp`，模型跟 CLI 默认 hy4-preview-f；钉模型改 acp command 加 `--model`） | 2026-09-24 起入池，vendor=tencent；session/new 传 model 无效，勿依赖 omnigent send_model |
+| CodeBuddy 工人 | `exec_codebuddy` + `acp:codebuddy`（`codebuddy --acp`，模型跟 CLI 全局默认——`codebuddy config set -g model <id>` 切换，2026-09-28 起为 deepseek-v4.1-flash；钉死单工人可改 acp command 加 `--model`） | 2026-09-24 起入池；vendor 按默认模型实际后端（生成器自动判定，当前 deepseek）；session/new 传 model 无效，勿依赖 omnigent send_model |
 
 换池：`python3 agentpeihe/gen_controller_bundle.py [--brain pi] [--no-codex]`，然后带 `--agent` 重启 server 重注册。
 

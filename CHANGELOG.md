@@ -4,6 +4,10 @@
 
 ---
 
+## 2026-09-28
+
+- **feat · CodeBuddy 默认模型切 deepseek-v4.1-flash（vendor tencent→deepseek）**：`codebuddy config set -g model deepseek-v4.1-flash`（实测 `config set -g model` 对 ACP 生效，session/new currentModelId 回显 deepseek-v4.1-flash）——交互/ACP/派单工人全局默认统一切换。生成器配套升级：新增 `sniff_codebuddy_model`（读 `codebuddy config get model`）+ `codebuddy_vendor`（按默认模型实际后端判 vendor：deepseek/glm→zhipu/kimi→moonshot/minimax/hy→tencent），exec_codebuddy 的 vendor 与池表备注、通道隔离行动态化，不再写死 tencent。重跑 `--brain pi --no-codex` + 带 `--agent` 重启（controller v31）：池表 exec_codebuddy 行 = acp:codebuddy | deepseek | 默认 deepseek-v4.1-flash。烟测：AcpExecutor 直驱实回「收到」。注册表 DeepSeek V4.1 Flash 行补 CodeBuddy 通道路由。
+
 ## 2026-09-24
 
 - **feat · CodeBuddy 入池（exec_codebuddy，vendor=tencent）**：背景是 hermes 连火山 Coding Plan 额度用尽。CodeBuddy CLI（2.157.0）原生支持 ACP（`codebuddy --acp`，stdio ndJson），实测 initialize → session/new（默认模型 hy4-preview-f，x0.00 credits）→ session/prompt 全链路通过；omnigent 通用 acp harness 零代码接入——`~/.omnigent/config.yaml` 的 acp.agents 加 `{name: CodeBuddy, command: "codebuddy --acp"}`（harness id `acp:codebuddy`）。生成器新增 has_codebuddy 检测 + exec_codebuddy 工人块（比照 exec_xai/Grok ACP 写法），通道隔离节加 CodeBuddy 行；`ensure_acp_config` 改按条目幂等补齐。模型跟 CLI 默认（不钉）。另加 `--no-codex` 开关（Boss 裁：codex ChatGPT 登录不进池），压住 exec_openai 工人与 codex 大脑候选。验证：AcpExecutor 直驱 `codebuddy --acp` 实回「派单成功」；`acp_agents()` / `harness_catalog()` 均见 `acp:codebuddy`；`--brain pi --no-codex` 重跑后池 = exec_deepseek / exec_moonshot / exec_xai / exec_codebuddy / exec_zhipu / exec_deepseek_hermes，大脑仍是 pi(deepseek-flash)。
