@@ -317,7 +317,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 | DeepSeek 工人（第二通道） | `exec_deepseek_hermes` + `hermes-native`（hermes CLI 直连 api.deepseek.com，model=`deepseek-v4-flash` 即官方 V4-Flash-0731，显示名 hermes-DeepSeekFlash（直连）） | 2026-09-09 起入池，与壳 exec_deepseek（vision-exp）异构并存；仅在 hermes 默认模型为 DeepSeek 时自动生成 |
 | Kimi 手工 | 网页选 Kimi 或 `omnigent-zh kimi` | 占 Claude / CC Switch |
 | Kimi 自动 | `exec_moonshot` + `kimi-native`（默认 `--yolo`） | `claude-native` 伪装 moonshot |
-| Grok 工人 | `exec_xai` + `acp:grok-build`（`grok agent stdio`，模型/effort 跟 CLI 默认：2026-09-28 起 grok-4.7 + xhigh） | 勿用 pi:grok 顶缸（生成器已与 exec_xai 去重） |
+| Grok 工人 | `exec_xai` + `acp:grok-build`（`grok agent stdio`，模型/effort 跟 CLI 全局默认：2026-09-28 起 grok-4.7 + xhigh；TUI `/model` 会改写全局 config.toml——实测，派单随之切换，但 vendor 恒为 xai 无需重跑生成器） | 勿用 pi:grok 顶缸（生成器已与 exec_xai 去重）；`grok models` 显示的服务端目录可与 config.toml 钉住不一致（目录滞后，不影响运行） |
 | 官方 Anthropic Claude | 可选；大概率不用 | — |
 | GLM 5.2 工人 | ~~`exec_zhipu` + `hermes-native`~~ **cooldown-until 2026-12-31（下架中）**：火山方舟 Agent Plan 2026-09-23 到期不续费，注册表冷却条目压住自动入池；恢复时删 cooldown 重跑生成器 | 冷却期勿手工派 exec_zhipu（额度已尽） |
 | CodeBuddy 工人 | `exec_codebuddy` + `acp:codebuddy`（`codebuddy --acp`，模型跟 CLI 全局默认——TUI `/model` 与 `codebuddy config set -g model <id>` 都会改写全局默认；切完须重跑生成器 + 重启，池表/vendor 才与实际一致） | 2026-09-24 起入池；vendor 按默认模型实际后端（生成器自动判定）；session/new 传 model 无效——要钉死单工人只能改 acp command 加 `--model <id>`（进程级，优先于全局默认） |
