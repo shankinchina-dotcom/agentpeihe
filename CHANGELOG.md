@@ -7,6 +7,7 @@
 ## 2026-09-28
 
 - **feat · Grok 4.6 → 4.7（xhigh effort）**：`~/.grok/config.toml` 已是 `models.default = "grok-4.7"` + `default_reasoning_effort = "xhigh"`（grok CLI 1.0.41，stable 通道）。exec_xai（acp:grok-build = `grok agent stdio`）模型与 effort 均取 CLI 默认，壳侧零改动。仓库侧同步：生成器 PI_PROVIDERS pi 备选 `grok-4.7`（两仓）、omnigent onboarding 兜底 pin `xai: grok-4.7`（两仓）、部署文档 provider 示例 `default: grok-4.7`（agentpeihe 两仓 + ClaudeTeam 两份）。注册表 Grok 行补注（floating-alias 延续、分数不动）。重跑 + 带 `--agent` 重启（controller v32，池表 skip 注 pi:grok-4.7）。
+- **fix · CodeBuddy 模型链路实证 + 池表回正（controller v33）**：实测三层机制——TUI `/model` 与 `config set -g model` 都写全局默认（ACP currentModelId 跟随，exec_codebuddy 派单模型即随之切换）；`--model` 启动参数只管当次进程；ACP `session/set_model` 只管当次会话。Boss 裁 exec_codebuddy「跟随 CLI 默认」：TUI 切模型后须重跑生成器 + 重启保持池表/vendor 一致（生成器 sniff 动态判定，零代码）；本次 Boss 切回 hy4-preview-f 后已重跑回正（v33，exec_codebuddy | tencent）。要钉死派单模型不受 TUI 影响，改 acp command 加 `--model <id>`。
 - **feat · CodeBuddy 默认模型切 deepseek-v4.1-flash（vendor tencent→deepseek）**：`codebuddy config set -g model deepseek-v4.1-flash`（实测 `config set -g model` 对 ACP 生效，session/new currentModelId 回显 deepseek-v4.1-flash）——交互/ACP/派单工人全局默认统一切换。生成器配套升级：新增 `sniff_codebuddy_model`（读 `codebuddy config get model`）+ `codebuddy_vendor`（按默认模型实际后端判 vendor：deepseek/glm→zhipu/kimi→moonshot/minimax/hy→tencent），exec_codebuddy 的 vendor 与池表备注、通道隔离行动态化，不再写死 tencent。重跑 `--brain pi --no-codex` + 带 `--agent` 重启（controller v31）：池表 exec_codebuddy 行 = acp:codebuddy | deepseek | 默认 deepseek-v4.1-flash。烟测：AcpExecutor 直驱实回「收到」。注册表 DeepSeek V4.1 Flash 行补 CodeBuddy 通道路由。
 
 ## 2026-09-24
