@@ -289,3 +289,17 @@
 - **根因**：claude-native 子会话终端启动时 `--append-system-prompt` 注入的是会话绑定 agent（=controller）的完整 prompt（runner/app.py:5909 按 session.agent_id 解 spec，子会话 create 时 agent_id=parent 的 controller）。controller prompt 10,718B 时启动命令包 ≈16.9KB；本机 tmux 实测单命令 16,000B 过、16,384B 拒（16KB imsg 硬顶）→ 发射被拒。prompt 随模型池备注逐日累涨，09-08 晚首撞线。
 - **怎么解决**：治标（已施）——生成器修剪 controller prompt 至 9,091B（模型池备注去重 + 各节冗词压缩，规则全保留），重跑生成器 + 带 `--agent` 重启（坑 33），仿真预试 15.7KB 命令 tmux 放行；治本（G64 已立项）——子会话终端改注入子 agent 自己的 spec prompt（exec_* 约 3.7KB），无 spec 可解时维持现状但对 >12KB 注入文本降级 WARN 而非硬失败。自检口诀：controller prompt 改动后，第一发 claude-native 派单必须盯 runner 日志 grep `command too long`。
 - **同类避免**：外部命令/消息通道都有隐形尺寸上限（tmux imsg 16KB、shell ARG_MAX、API context），凡「把大文本塞进启动命令」的链路，尺寸要进验收读数（字节数实测），不要只在功能层面验证「能跑」。
+
+### 坑 36：harness 240s 空闲看门狗 × 长任务 = Executor 必须分段交棒；Controller 契约禁写「等完成才交棒」（2026-09-29）
+
+- **现象**：伏羲 G101 发布关，关二爷·Grok 两次在后台任务（test:mocks / tauri build）还在跑时交棒只报进度；Controller 误判违规，续派时附加「必须等所有后台任务完成、不得边跑边交棒」的硬要求 → 下一棒 `turn exceeded the 240s harness idle watchdog`（run_turn 240 秒零事件）直接 failed。楔死的是「turn 内同步等待长任务」本身。
+- **根因**：harness 看门狗按 turn 内事件流计时，Executor 一个 turn 里等 20 分钟构建必然撞线；而后台进程（nohup 式 shell 后台命令）不随 turn 死亡——Executor 分段交棒（启动后台任务→交棒→被续派→读日志推进）是绕看门狗的**唯一正确模式**，不是偷懒。
+- **怎么解决**：Controller 侧定节奏——① 契约写「长命令一律后台＋/tmp 日志」即可，**禁止**再写「等完成才许交棒」；② Executor 交进度棒后，Controller 自己盯后台日志（起后台 watch 循环，EXIT 落盘即通知），到位后再派收尾棒；③ 收尾棒只装快操作（登记、台账、commit），单 turn 闭环。G101 实证：turn 被楔死后四条验收日志与 tauri build 全部幸存，构建 EXIT:0，收尾棒 5 分钟收口。
+- **同类避免**：凡关卡含 >3 分钟的外部任务（构建、大批量测试、网络传输），契约就按「多棒」设计，别把单关当单 turn。看门狗报错语义是「turn 无事件」，不是「任务失败」——先查后台产物再决定重跑还是续跑。
+
+### 坑 37：发布关契约漏版本面——changelog 对齐测试锁五处；`build:desktop` 不产 dmg（2026-09-29）
+
+- **现象**：G101 契约只放行 `tauri.conf.json` 一处版本号，Executor 一改完 test:mocks 即红——`src/lib/changelog.test.ts` 的 `keeps app manifests and the latest changelog version aligned` 把 tauri.conf.json / package.json / Cargo.toml / changelog.ts 首条锁成同一版本（Cargo.lock / package-lock.json 随动）。另外 `npm run build:desktop` 只跑前端＋mcp 构建，**不产出 dmg**；真正出包是 `npx tauri build`（其 beforeBuildCommand 串起 build:desktop）。
+- **根因**：Controller 写契约时没读 changelog.ts 文件头注释（「release 时五处联动」写得明明白白），凭「版本号在 tauri.conf.json」的直觉圈 Allowed；构建命令沿用 AGENTS.md 验收清单字面，没核 G89 在案的「build:desktop 不产包」记录。
+- **怎么解决**：发布关契约模板固定为——Allowed 版本面五处（package.json、tauri.conf.json、Cargo.toml、两个 lock、changelog.ts 新条目）＋构建命令 `npx tauri build`（带 cargo PATH 与 PROTOC）；Stop 条件保留「验收红即停、不修代码」。Executor 撞锁停红灯＋如实上报是正确行为，Controller 修约重派即可，不算关卡失败。
+- **同类避免**：契约的 Allowed 清单先问「有没有测试/脚本把这份文件和别的文件锁在一起」——版本号、i18n 键集、schema 形状这类「一致性锁」在仓库里越来越多，圈允许面时先 grep 测试断言再下笔。

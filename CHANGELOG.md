@@ -7,86 +7,121 @@
 ## 2026-09-29
 
 - **docs · 会话命名补通道消歧三段式（`法正·codebuddy·DS`）**：Boss 明令——CodeBuddy 通道的 DeepSeek 会话名一律 `<角色>·codebuddy·DS`（禁再用 `法正·DeepSeek-v4.1`）。规则：同一模型经多通道接入时用 `<角色中文名>·<通道>·<模型缩写>` 三段式，换通道视同换模型用新名新建会话。生成器模板「会话池」「立项关」两节 + SKILL.md Session naming + 会话池文档同步（两仓）。`--brain pi --no-codex` 重跑后池表不变（5 工人）；codebuddy 探测默认模型 deepseek-v4.1-flash → vendor 自动判 deepseek，与 Boss「codebuddy 即 DeepSeek」明令一致（v33 回正 hy4 后的再次切换正式烘入）。伏羲项目侧：旧会话「法正·DeepSeek-v4.1」（G96–G99 复核完成）已 tombstone。
+- **docs · PITFALLS 坑 36/37 落笔（伏羲 G101 实证）**：坑 36＝harness 240s 空闲看门狗 × 长任务 → Executor 分段交棒是唯一正确模式，Controller 契约禁写「等完成才交棒」，棒间由 Controller 盯后台日志再派收尾棒；坑 37＝发布关契约漏版本面（changelog.test.ts 锁五处：package.json/tauri.conf.json/Cargo.toml/两 lock/changelog.ts 首条）＋ `build:desktop` 不产 dmg（发布构建是 `npx tauri build`）。两仓同步。
 
 ## 2026-09-28
 
-- **feat · Grok 4.6 → 4.7（xhigh effort）**：`~/.grok/config.toml` 已是 `models.default = "grok-4.7"` + `default_reasoning_effort = "xhigh"`（grok CLI 1.0.41，stable 通道）。exec_xai（acp:grok-build = `grok agent stdio`）模型与 effort 均取 CLI 默认，壳侧零改动。仓库侧同步：生成器 PI_PROVIDERS pi 备选 `grok-4.7`（两仓）、omnigent onboarding 兜底 pin `xai: grok-4.7`（两仓）、部署文档 provider 示例 `default: grok-4.7`（agentpeihe 两仓 + ClaudeTeam 两份）。注册表 Grok 行补注（floating-alias 延续、分数不动）。重跑 + 带 `--agent` 重启（controller v32，池表 skip 注 pi:grok-4.7）。
+- **feat · Grok 4.6 → 4.7（xhigh effort）**：`~/.grok/config.toml` 已是 `models.default = "grok-4.7"` + `default_reasoning_effort = "xhigh"`。exec_xai 模型与 effort 均取 CLI 默认，壳侧零改动；同步生成器 pi 备选、omnigent onboarding pin、部署文档 provider 示例（两仓 + ClaudeTeam），注册表 Grok 行补注（floating-alias 延续）。重跑 + 重启 controller v32。
 - **docs · Grok /model 写全局实证**：tmux 真实 TUI 实验——`/model grok-4.6` 同步改写 config.toml [models] default（机制与 CodeBuddy 一致：TUI 切换即改派单默认）；差异是 grok vendor 恒为 xai，池表无需重跑。部署文档 Grok 行补机制说明（两仓）。实验后 config 已恢复 grok-4.7 xhigh。
-- **fix · CodeBuddy 模型链路实证 + 池表回正（controller v33）**：实测三层机制——TUI `/model` 与 `config set -g model` 都写全局默认（ACP currentModelId 跟随，exec_codebuddy 派单模型即随之切换）；`--model` 启动参数只管当次进程；ACP `session/set_model` 只管当次会话。Boss 裁 exec_codebuddy「跟随 CLI 默认」：TUI 切模型后须重跑生成器 + 重启保持池表/vendor 一致（生成器 sniff 动态判定，零代码）；本次 Boss 切回 hy4-preview-f 后已重跑回正（v33，exec_codebuddy | tencent）。要钉死派单模型不受 TUI 影响，改 acp command 加 `--model <id>`。
-- **feat · CodeBuddy 默认模型切 deepseek-v4.1-flash（vendor tencent→deepseek）**：`codebuddy config set -g model deepseek-v4.1-flash`（实测 `config set -g model` 对 ACP 生效，session/new currentModelId 回显 deepseek-v4.1-flash）——交互/ACP/派单工人全局默认统一切换。生成器配套升级：新增 `sniff_codebuddy_model`（读 `codebuddy config get model`）+ `codebuddy_vendor`（按默认模型实际后端判 vendor：deepseek/glm→zhipu/kimi→moonshot/minimax/hy→tencent），exec_codebuddy 的 vendor 与池表备注、通道隔离行动态化，不再写死 tencent。重跑 `--brain pi --no-codex` + 带 `--agent` 重启（controller v31）：池表 exec_codebuddy 行 = acp:codebuddy | deepseek | 默认 deepseek-v4.1-flash。烟测：AcpExecutor 直驱实回「收到」。注册表 DeepSeek V4.1 Flash 行补 CodeBuddy 通道路由。
+- **fix · CodeBuddy 模型链路实证 + 池表回正（controller v33）**：实测 TUI `/model` 与 `config set -g model` 均写全局默认，exec_codebuddy 派单模型随之切换；`--model` 进程级、`session/set_model` 会话级。Boss 裁「跟随 CLI 默认」：TUI 切完须重跑生成器 + 重启保持池表/vendor 一致；本次切回 hy4-preview-f 后已回正（v33，exec_codebuddy | tencent）。
+- **feat · CodeBuddy 默认模型切 deepseek-v4.1-flash（vendor tencent→deepseek）**：`codebuddy config set -g model deepseek-v4.1-flash`（实测对 ACP 生效，currentModelId 回显一致），交互/ACP/派单全局默认统一切换。生成器升级：`sniff_codebuddy_model` + `codebuddy_vendor`——exec_codebuddy 的 vendor 按默认模型实际后端自动判定，不再写死 tencent。重跑 + 带 `--agent` 重启（controller v31），烟测实回「收到」。注册表 DeepSeek V4.1 Flash 行补 CodeBuddy 通道路由。
 
 ## 2026-09-24
 
-- **feat · CodeBuddy 入池（exec_codebuddy，vendor=tencent）**：背景是 hermes 连火山 Coding Plan 额度用尽。CodeBuddy CLI（2.157.0）原生支持 ACP（`codebuddy --acp`，stdio ndJson），实测 initialize → session/new（默认模型 hy4-preview-f，x0.00 credits）→ session/prompt 全链路通过；omnigent 通用 acp harness 零代码接入——`~/.omnigent/config.yaml` 的 acp.agents 加 `{name: CodeBuddy, command: "codebuddy --acp"}`（harness id `acp:codebuddy`）。生成器新增 has_codebuddy 检测 + exec_codebuddy 工人块（比照 exec_xai/Grok ACP 写法），通道隔离节加 CodeBuddy 行；`ensure_acp_config` 改按条目幂等补齐。模型跟 CLI 默认（不钉）。另加 `--no-codex` 开关（Boss 裁：codex ChatGPT 登录不进池），压住 exec_openai 工人与 codex 大脑候选。验证：AcpExecutor 直驱 `codebuddy --acp` 实回「派单成功」；`acp_agents()` / `harness_catalog()` 均见 `acp:codebuddy`；`--brain pi --no-codex` 重跑后池 = exec_deepseek / exec_moonshot / exec_xai / exec_codebuddy / exec_zhipu / exec_deepseek_hermes，大脑仍是 pi(deepseek-flash)。
-- **ops · GLM 5.2 冷却下架（exec_zhipu 出池）**：火山方舟 Agent Plan 到期不续费，注册表 GLM 5.2 行加 `cooldown-until: 2026-12-31`（恢复时删除重跑即可）；重跑生成器后池不再含 exec_zhipu，bundle 目录同步 purge。controller v30。另实测 CodeBuddy 模型选择机制：session/new 的 model 字段被忽略、session/set_model 支持但 omnigent executor 不调用、`--acp --model <id>` 启动参数钉住生效（exec_codebuddy 如需钉模型改 acp command 即可）。
+- **feat · CodeBuddy 入池（exec_codebuddy，acp:codebuddy，vendor=tencent）**：hermes 火山额度尽后的新执行体。CodeBuddy CLI（2.157.0）原生 ACP（`codebuddy --acp`）实测全链路通过，omnigent 通用 acp harness 零代码接入（`~/.omnigent/config.yaml` acp.agents 加一行）。生成器新增 has_codebuddy 检测 + exec_codebuddy 工人块 + `--no-codex` 开关（Boss 裁：codex ChatGPT 登录不进池）；`ensure_acp_config` 改按条目幂等。模型跟 CLI 默认 hy4-preview-f；实测钉模型只有 `--acp --model <id>` 生效（session/new model 字段被忽略、session/set_model omnigent 不调用）。验证：AcpExecutor 直驱实回「派单成功」，`/v1/harnesses` 见 `acp:codebuddy`。
+- **ops · GLM 5.2 冷却下架**：注册表 GLM 5.2 行加 `cooldown-until: 2026-12-31`（方舟 Plan 到期不续），重跑后 exec_zhipu 出池、bundle 目录 purge。重跑 + 带 `--agent` 重启：controller v30，池 = exec_deepseek / exec_moonshot / exec_xai / exec_codebuddy / exec_deepseek_hermes，大脑仍 pi(deepseek-flash)。
 
 ## 2026-09-11
 
-- **feat · DeepSeek V4.1-Flash 切换（规范名 deepseek-flash，官方 2026-09-10 发布）**：0731 与 vision-exp 官方双双下线（旧名暂时路由 V4.1）——三通道统一切规范名：~/.claude/settings.json 全别名 `deepseek-flash[1M]`、~/.hermes/config.yaml `default: deepseek-flash`、生成器 docstring/pi 备选/通道隔离/pool 注释同步（两仓，prompt 9,091→9,042B）。V4.1 原生视觉 + 原生 1M（输出 384K）、Terminal-Bench 2.1 90.6（vision-exp 83.9）、输入价 2元/百万（高峰）。注册表 rev 40→41：V4.1 新身份继承 vision-exp 后端 60（Boss 钦定留痕，沿 vision-exp 继承 flash 先例），vision-exp / 0731 / hermes 直连三旧身份标 deprecated。重跑生成器 + 带 `--agent` 重启（controller v28，description 2026-09-11）。烟测：Anthropic 端点 `deepseek-flash[1M]` 文本实回「收到」+ 1x1 PNG 实回「粉色」（model 回显无降级）；hermes chat 实答 4。背景：旧纪元会话 09-10 15:15 经 UI 删除（G63 军报前提作废），Boss 改裁「现在就切」；G64 根修向新丞相（K3）重派 + G65 V4.1 校准关立项。
+- **feat · DeepSeek V4.1-Flash 切换（deepseek-flash）**：官方 2026-09-10 发布（原生视觉+原生 1M，Terminal-Bench 2.1 90.6），0731/vision-exp 下线暂时路由 V4.1。三通道切规范名：settings.json 全别名 `deepseek-flash[1M]`、hermes `default: deepseek-flash`、生成器两仓同步（prompt 9,042B）。注册表 rev→41：V4.1 继承 vision-exp 后端 60（Boss 钦定留痕），三旧身份 deprecated。重跑 + 带 `--agent` 重启（controller v28）。烟测：Anthropic 文本「收到」+ 图片「粉色」、hermes 实答 4，均无降级。G64 根修向新丞相（K3）重派 + G65 V4.1 校准关立项。
 
 ## 2026-09-09
 
-- **feat · DeepSeek 主力默认 → vision-exp（官方 2026-08 更新）**：CC Switch + Claude Code 壳 `~/.claude/settings.json` 主开关与 Haiku/Fable/Sonnet/Opus 别名全部 `deepseek-v4-flash-vision-exp[1M]`（图片输入 + 1M）；pi/OpenAI 直连备选仍为无后缀稳定版 `deepseek-v4-flash`（官方已指向 V4-Flash-0731）。烟测：Anthropic 端点文本 + base64 图片均实回 `deepseek-v4-flash-vision-exp`，无静默降级。PITFALLS 坑 21、部署通道表、WINDOWS_HANDOFF、STEPS_6_8、W16 示例、生成器注释与 Controller prompt 同步（两仓）。
-- **feat · hermes 默认模型 → DeepSeek `deepseek-v4-flash`（V4-Flash-0731）**：`~/.hermes/config.yaml` model 块改直连 api.deepseek.com（火山方舟 Agent Plan provider 保留，GLM 5.2 等可 /model 手选）。生成器 exec_zhipu 分支加 GLM 嗅探门——hermes 默认非 GLM 时不再误生成「hermes-GLM5.2」工人，池注释如实标注；`--dry-run` 验证通过。GLM 5.2 自动通道随之退出默认池。
-- **ops · 线上池重建 + server 重启**：Boss 确认后正式重跑生成器——删除 exec_zhipu，重写 exec_deepseek/exec_moonshot/exec_xai/controller；`omnigent-zh server stop` 后按原进程参数重启（127.0.0.1:6767）。`/v1/agents` 确认 controller v23 注册、新 prompt 含 vision-exp 规则；runner/host 自动重连，5 个在跑会话全部 reattach。
-- **score · 注册表 rev 36→37**：vision-exp 登记为 exec_deepseek 默认身份（Candidate），**Boss 钦定继承** Flash 修改前的后端 60 分（覆盖「新身份不继承」默认规则，备注留痕）；旧 Flash 身份转 pi 直连备选备查；GLM 5.2 路由改 hermes `/model` 手选。
-- **fix · 误报结案**：omnigent hermes_executor 的 `--source tool` 与 hermes v0.19.0 实际兼容（该参数属 `chat` 子命令），实测 `hermes chat -q … -Q --source tool` 正常应答并回 session_id；executor 与回归测试均不改。
-- **feat · DeepSeek 第二通道入池（exec_deepseek_hermes）**：生成器新增分支——嗅探到 hermes 默认模型为 DeepSeek 时自动生成 `exec_deepseek_hermes`（hermes-native 直连 api.deepseek.com，model=deepseek-v4-flash 即 V4-Flash-0731，显示名 hermes-DeepSeekFlash（直连）），与壳 exec_deepseek（vision-exp）异构并存；头部注释/Controller prompt/部署通道表同步（两仓）。注册表 rev 37→38 登记新身份（Candidate，未校准，不继承——继承钦定仅限 vision-exp）。
-- **fix · server 重启须带 `--agent` 才重新注册 bundle（PITFALLS 坑 33）**：裸参数重启只保会话不注册——`/v1/agents` 的 controller 停在 v23/2026-08-20；按生成器提示带 `--agent …/agents/controller` 重启后 v24、description 日期 2026-09-09 生效。exec_deepseek_hermes 直发烟测实回「收到」。
-- **feat · Grok 4.5 → 4.6 上线**：xAI 官方文档确认 Grok 4.6 为当前旗舰（coding 推荐）。本机 grok CLI v1.0.24 的 `~/.grok/config.toml` models.default 已是 `grok-4.6`（stable auto_update 已跟进），`exec_xai`（acp:grok-build = `grok agent stdio`，模型取 CLI 默认）壳侧零改动完成升级；exec_xai 直发烟测实回「收到」，grok 会话记录 `current_model_id=grok-4.6` / `primaryModelId=grok-4.6-build` 坐实。生成器 PI_PROVIDERS pi 备选 `grok-4.6`、omnigent onboarding 兜底 pin `grok-3→grok-4.6`、部署文档 provider 示例同步（两仓 ×2）。注册表 rev 38→39：Grok 行填实身份（floating-alias 延续，分数不动，Direct route 改 available(exec_xai)）。丞相派单通道不变（exec_xai 一直在池）。
-- **feat · GLM 5.2 恢复丞相可自动派活（exec_zhipu 回池）**：omnigent 服务端 `_derive_terminal_launch_args_from_spec` 新增 hermes-native 映射——worker 的 `executor.model` + `config.provider` → hermes TUI 启动参数 `-m/--provider`（两仓，`test_sessions_yolo_launch_args` 17 绿）；生成器改嗅探方舟 plan 块默认模型（`providers.volcengine-agent-plan.model`）生成 exec_zhipu，工人 YAML 钉住 model+provider，不再随 hermes 全局默认漂移。全链路实证：带 parent 的子代理派发 → `terminal_launch_args` 正确落库 → hermes 窗格页脚 `glm-5-2-260617 │ 1M` → 实答「收到」。注册表 rev 39→40（GLM 路由恢复）。注意：无 `parent_session_id` 的手工子代理创建不继承 runner，会报 `runner_failed_to_start`。
-- **fix · controller prompt 撞 tmux 16KB 硬顶（坑 34/35）→ A 治标落地 + B 根修立项（G64）**：claude-native 子会话终端 `--append-system-prompt` 注入的是 controller 完整 prompt（runner/app.py:5909 按 session.agent_id 解 spec，子会话 agent_id=parent 的 controller）——prompt 随模型池备注涨至 10,718B，启动命令包 ≈16.9KB 超本机 tmux 16KB imsg 硬顶（实测 16,000 过 / 16,384 拒），09-08 晚起 192 次 `command too long`，关二爷·DeepSeek 派发全挂（native_terminal_start_failed）。A（Boss 裁决 A+B）：生成器 9 处修剪（模型池备注去重 + 通道隔离/角色表/编译器/会话池/compact/执行原则/立项关冗词压缩，规则逐条保留）→ 9,091B；重跑 + 带 `--agent` 重启（controller v27）；tombstone 旧会话 conv_dc43eb01（105K tokens 不可恢复）→ 丞相按 G61 先例同名重派 G63——新会话 conv_ea740ec0 status=running、ctx 69K、零新增 command too long（vision-exp 首个正式关开跑）。B：G64 根修立项（子会话改注入子 agent 自己 spec prompt；无 spec 且 >12KB 降级 WARN 不硬失败，两仓 + pre-commit + 活体复派验证）已派丞相排期（G63 军报先行）。坑 34（子代理 runner 一次绑定终身 → 重启后旧子会话 runner_failed_to_start；close 跨注册时代盲区）、坑 35 录入 PITFALLS（两仓）。
-- **docs · 部署文档新增 §4.7 日常操作卡**：UI 主路（找丞相，固定主会话）/ 异常三读数鉴别（status、error code、runner 日志）/ 复位=close+同名重派 / 变更后三条纪律（带 `--agent` 重启、盯 `command too long`、prompt ≤12KB 预算）/ API 应急注入信封（`data` 包裹 + content 必须 list）+ §4.3 prompt 尺寸预算条、附录 A 踩坑表第 8 行。
-
-## 2026-08-21
-
-- **fix · kimi 0.37.2 TUI 适配（坑 32，omnigent 仓）**：多行粘贴被 0.37.2 折叠成 `[paste #N +M lines]` 占位符 → 草稿检测改认占位符；信任页改方向键菜单（默认 Don't trust、Esc=退出 TUI）→ `_settle_pane` 改读 `❯` 选中行 Up 导航 + Enter，绝不发 Esc。回归 6 项、executor 64 项 + kimi 全套 143 项绿，tests/inner 1752 过、tests/runner 1192 过（残留失败均 macOS 既有环境问题，干净树复现）；活体：/tmp 全新目录 46 行粘贴一次投递成功回 "OK"，Boss 真实会话重发链路确认恢复。
-
-## 2026-08-20
-
-- **ops · 会话池 + Prompt 编译器上线并过金丝雀**：重跑生成器 + 重启 server 完成注册；三关连跑金丝雀（/tmp/ap_canary，G1→G2→G3 派 exec_deepseek）实测全过——Executor 子会话全程仅 1 个（稳定名「关二爷·DeepSeek」），首派 initial 编译含固定头、第 2/3 派 followup 只含契约段，法正（exec_xai）首条消息零执行者军报字段，战报表收尾；12 项 unittest 独立复跑全绿。
-- **score · Codex 注册表 cooldown**：`Codex current model` 标 `cooldown-until: 2026-09-12`（usageLimitExceeded 实锤，额度耗尽不扣分）；registryRevision 35→36。
-- **ops · 大脑临时切 pi**：codex cooldown 期间 `--brain pi`（deepseek API，headless 全工具桥）；codex 恢复后重跑生成器（不带 `--brain`）回默认优先级。
-- **feat · 丞相大脑统一菜单（omnigent 前端一处补丁）**：`web/src/lib/agentLabels.ts` 的 `BRAIN_HARNESS_LABELS` 增加 `kimi-native`——丞相仍只有一个入口，大脑菜单内直接可选 Kimi（K3 TUI）/Codex/Pi 等；override→kimi-native 链路端到端实测通过（建空会话 + 首消息走 `/events` → turn 正常回包）。**同日取代**下方的「大脑变体 bundle」方案（变体已从生成器回退、已部署的 controller-k3 已清退）——变体改的是智能体清单，统一菜单改的是一行前端映射，后者才是 Boss 要的形态。
-- **fix · 坑 31 harness_override 半拉子生效（omnigent runner 核心修复）**：override 到 kimi-native 的会话 turn 被 spec 默认大脑接走（TUI 空白、页面照跑）——runner `_session_harness_name` 只从 spec 反解。修复 = 会话级 override 缓存（create 时写入、turn 派发兜底、销毁清理）；回归测试 `tests/runner/test_session_harness_override.py` 3 项正反对照。改在嵌套副本 runner，新会话自动生效（runner 按会话新拉进程）。
-- **fix · 坑 29 根因定位**：native 会话「create + initial_items」不自动起跑——runner 崩溃恢复保护（`runner/app.py:9906` 的 `is_native_harness` 分支）跳过首轮 kickoff；API 自动化绕法 = 先建空会话、首消息走 `/events`（UI 天然两步走，从未踩坑）。
-- **~~feat · 大脑变体 bundle~~（同日被统一菜单方案取代，代码已回退）**：为每个可用大脑生成 `controller-<k3|...>` 变体 bundle 的思路保留在 git 历史（548b16d），如未来需要「同智能体不同提示词」变体可参考。
-- **docs · 部署文档 §4.3.3 刷新**：丞相大脑菜单现为全量清单（Kimi K3 TUI 经 坑 31 修复后真实可选）；补 Codex 冷却期 pi 默认说明与「换脑验收看 TUI/runner 日志」锚点。
-- **docs · PITFALLS 坑 28/29/30**：kimi 新目录信任引导卡死；纯 API 创建 kimi-native 顶层会话首轮注入 stalled（根因未定位，先记症状与绕法）；codex 配额冻结的「先记 cooldown 再换脑」处置流程。
-
-## 2026-08-19
-
-- **feat · 三段式 Prompt 编译器 `compile_gate_prompt.py`**：派关消息标准化为 固定头（角色纪律＋项目 AGENTS.md＋repo map）＋本关契约＋产物指针；initial/followup 双模式，同输入逐字节同输出（无时间戳）；Controller prompt 硬规则「派关必须用 sys_os_exec 调编译器、输出逐字作 sys_session_send 的 args，禁止手拼」。
-- **feat · repo map 生成器 `gen_repo_map.py`**：产出 `<project>/.agentpeihe/repo_map.md` 作固定头组成部分，确定性排序、无日期，仓库结构变化时才重跑。
-- **feat · 会话池命名新规（Sticky Executor）**：会话名改稳定名 `<角色中文名>·<模型名>`（去掉旧的关卡号和简述）——`sys_session_send` 同名 title = 续跑同一子会话（带完整历史），不同名 = 新建；续发禁传 model/harness/file_ids/cost_budget；并行关卡例外追加 `-P2`/`-P3`；换模型/换角色自然新会话；清零先 `sys_session_close` 再同名重派。生成器 Controller prompt 与 SKILL.md 同步。
-- **fix · Controller prompt 去动态化**：正文删「于 {date} 生成」与 pool_table 的 cooldown 截止日期（cooldown 名单只打生成器 stdout，不进 bundle），同输入 prompt 逐字节稳定、可缓存；config.yaml `description` 的日期保留（不进 prompt，无害）。
-- **feat · compact 阈值纪律**：环境变量 `AGENTPEIHE_COMPACT_THRESHOLD_TOKENS`（默认 80000）由生成器烘进 Controller prompt；超阈值流程 = Executor 写 State Summary（`<project>/.agentpeihe/state/<角色>·<模型>.md`，四段事实状态）→ 军报确认 → close → 同名重派 initial 编译，State Summary 作产物指针第一条。
-- **feat · Reviewer 极简上下文**：法正派发消息只能是编译器 `--role reviewer` 输出（关卡契约＋产物路径），禁止转发 Executor 对话历史、禁止粘贴 Gate Execution Report 全文（Controller 留存审计）；Executor prompt 增续关语义（续关复用上下文、禁止重读已知文件）、State Summary 输出格式、军报 Results「上下文用量自报」。
-- **docs · PITFALLS 坑 26/27 + 设计文档**：坑 26 双副本分叉（生产从嵌套副本 uv tool 安装，顶层 fork 已冻结并加 README 警示）；坑 27 `sys_session_send` 真名 `title` + create-or-continue 语义。新增 `docs/PROMPT_COMPILER_SESSION_POOL.md` 设计说明。
-- **docs · PITFALLS 坑 22/24/25**：坑 24 补 K3 盒线 `│ >`（无反应 / 输入框未就绪）；禁止对 Welcome Escape。新坑 25：Hermes 长粘贴收成 `[Pasted text #N]` 不是没贴进去。坑 22 的「Escape 清 Welcome」改为只对 tip。
+- **feat · DeepSeek 模型池更新（官方 2026-08 版）**：Claude 壳主力默认 `deepseek-v4-flash-vision-exp[1M]`（Haiku/Fable/Sonnet/Opus 别名全统一；视觉 + 1M，Anthropic 端点文本+图片烟测无静默降级）；pi 直连备选 `deepseek-v4-flash`（官方已指向 V4-Flash-0731）；hermes 默认改直连 DeepSeek `deepseek-v4-flash`（0731），GLM 5.2 自动通道退出默认池（hermes 内 /model 可手选）。agentpeihe 生成器与部署/坑文档两仓同步，生成器 exec_zhipu 分支加 GLM 嗅探门。
+- **ops · 线上池重建 + server 重启**：正式重跑生成器（删 exec_zhipu、重写 exec_deepseek/exec_moonshot/exec_xai/controller）；server 按原参数重启后 `/v1/agents` 确认 controller v23 注册、5 个在跑会话全部 reattach。注册表 rev 36→37：vision-exp 登记为默认身份，Boss 钦定继承 Flash 后端 60（备注留痕）。hermes_executor `--source tool` 不兼容疑点复核为误报（参数属 `chat` 子命令，实测正常），executor 不改。
+- **feat · DeepSeek 第二通道 exec_deepseek_hermes 入池**：hermes 默认模型为 DeepSeek 时生成器自动生成（hermes-native 直连 api.deepseek.com，V4-Flash-0731）；注册表 rev→38 登记新身份（Candidate，未校准）。**修正**：server 重启必须带 `--agent` 才重新注册 bundle——裸参数重启后 controller 停在 v23/2026-08-20，带 `--agent` 重启后 v24（description 日期 2026-09-09）生效；新工人直发烟测实回「收到」。
+- **feat · Grok 4.5 → 4.6 上线**：grok CLI 默认已是 grok-4.6（`~/.grok/config.toml` 核实），exec_xai（acp:grok-build）壳侧零改动；直发烟测实回「收到」，grok 会话记录坐实 `grok-4.6` / `grok-4.6-build`。生成器 pi 备选、omnigent onboarding pin（grok-3→4.6）、部署文档两仓同步；注册表 rev→39 填实 Grok 身份（floating-alias 延续，分数不动）。controller v25 注册生效，丞相派单链路实测可用。
+- **feat · GLM 5.2 恢复自动派活 + omnigent hermes-native 模型钉住**：`_derive_terminal_launch_args_from_spec` 新增 hermes-native 分支（worker `executor.model` + `config.provider` → hermes TUI 启动参数 `-m/--provider`，两仓，`test_sessions_yolo_launch_args` 各 17 绿）；生成器嗅探方舟 plan 默认模型生成 exec_zhipu（不再随 hermes 全局默认漂移）。活体实证：子代理派发 → `terminal_launch_args` 落库 → 窗格页脚 `glm-5-2-260617 │ 1M` → 实答「收到」。注册表 rev→40。controller v26。
+- **fix · controller prompt 撞 tmux 16KB 硬顶（坑 34/35）→ A 治标 + B 根修立项（G64）**：claude-native 子会话启动命令注入 controller 完整 prompt（runner/app.py:5909 按 session.agent_id 解 spec），prompt 涨至 10,718B → 命令包 ≈16.9KB 超 tmux 16KB imsg 硬顶（实测 16,000 过 / 16,384 拒），09-08 晚起 192 次 `command too long`，exec_deepseek 派发全挂（native_terminal_start_failed）。A：生成器 9 处修剪（模型池备注去重 + 各节冗词压缩，规则全保留）→ 9,091B；重跑 + 带 `--agent` 重启（controller v27）；tombstone 旧会话（105K tokens）后丞相按 G61 先例同名重派 G63——conv_ea740ec0 running、ctx 69K、零新增 command too long（vision-exp 首个正式关）。B：G64 立项（子会话改注入子 agent 自己 spec prompt；>12KB 降级 WARN 不硬失败），已派丞相排期。坑 34（子代理 runner 不换绑 + close 跨时代盲区）、坑 35 录 PITFALLS（两仓）。
+- **docs · 部署文档新增 §4.7 日常操作卡**：UI 主路找丞相 / 异常三读数 / 复位=close+同名重派 / 变更三条纪律（`--agent`、`command too long` 盯梢、≤12KB）/ API 注入信封（`data`+content list）；§4.3 增 prompt 尺寸预算条、附录 A 踩坑表第 8 行（两仓同步）。
 
 ## 2026-08-18
 
-- **docs · PITFALLS 坑 24 再修**：红字主因是 Welcome 被当成模态后 Escape 连打，不是 OAuth、也不是再打 `/login`。引擎改为静等 `>`、禁止对 Welcome 按键。
+- **fix · Kimi Welcome 不再 Escape 刷屏**：`conv_87c12d` 实证——353471d 已加载仍刷 ~38 行 `Send /login`。根因不是再打 Enter：Welcome 被当成焦点遮挡，`context:` 先于 `>` 出现时 `_settle_pane` 每 0.8s Escape（30s ≈ 38 下），K3 无 chat session 时一键一行红字。Welcome 移出 `_FOCUS_BLOCKERS`；就绪改为必须 `context:` + `>`（冷启动静等，不按键）；只有 tip/trust/sign-in 才 Escape；空输入框不再 Backspace。`test_kimi_native_executor` 回归。**新开会话生效**（已刷过的 pane 清不掉历史红字）。
+- **fix · Hermes 长粘贴收成 chip 后仍提交**：`conv_949c2666` 法正 G20 首条 37 行已进输入框（`[Pasted text #3]`），引擎只在 pane 里找原文末行，误报「未接收粘贴」不按 Enter。把 paste chip 视为已提交。`test_hermes_native_bridge` 39 绿。现场补 Enter 后 TUI 已 `Initializing agent`；G20 交卷与丞相 inbox **未在本条关闭**。
+- **fix · K3 盒线输入框 `│ >` 算就绪**：`conv_8e588d8e` 新开会话欢迎栏 `Session:` 为空、输入框是盒线 `│ >`，旧检测只认行首 `>`，静等超时「输入框未就绪」、网页无反应。识别盒线 `>`；空盒不算草稿。
 
 ## 2026-08-14
 
-- **docs · PITFALLS 坑 23/24 + 登录分流**：坑 23 收法正 inbox / Hermes 400 / `^A^K`；坑 24 写清 Kimi 0.36 冷启动 `No session yet` / TUI `/login` ≠ `kimi login` CLI。WINDOWS_HANDOFF、STEPS_6_8、W15、部署 §2 登录段同步。引擎提交 `f28777b`（新开会话生效）。
+- **fix · 父会话有未读 inbox 时不 reap 原生 pane**：法正 idle 交卷后 丞相 Kimi 仍被 1800s 收割，wake 注入落空。`parent_should_keep_native_pane`：有未完成工人、inbox 未抽空、或终态未投递，都不收；pane 自愈重建后补一次 wake。
+- **fix · Kimi 首条提交失败后禁止连打 Enter**：0.36/K3 首条常回 `No active session. Send /login`，草稿还在输入框，旧逻辑 8 秒内每 0.5s 再 Enter（约 16 行刷屏）。见到该错误立即停手。这是空 `Session:` 刷屏的主因，503f83d 没盖住这条路径。
+- **fix · Kimi K3 不再死刷 TUI `/login`**：欢迎栏已有 `Session: session_…` 或滚动区已堆 `Send /login` 时禁止再注入 `/login`；bridge 目录落一次性标记，inject 重试也不打第二下。修选 K3 后同一错误刷十几行。
+- **docs · PITFALLS 坑 24 + 登录分流**：TUI `/login`（进程内 session）≠ `kimi login` CLI（OAuth）。坑 23 登录条改指向坑 24；WINDOWS_HANDOFF / STEPS_6_8 / W15 / 部署登录段同步。
+- **fix · Kimi 冷启动自动 TUI `/login`**：0.36 每次新 pane 都打 `No session yet` / `Send /login to login`，OAuth 其实已登录（`kimi login` CLI 直接 Logged in）。网页第一条贴不进进程内 session，红字还把「请执行 kimi login」误注入成用户消息。引擎在冷启动屏只打一次 TUI `/login`（你手动斜杠的那个），成功后再贴真任务；已有 `N messages` 或 Already logged in 不打。真设备码授权才红字要浏览器。
+- **fix · Kimi 登录闸误杀就绪输入框**：首条消息前 TUI 会留下 `Error: No active session. Send /login to login.`，但 `>` + `context:` 已可贴。整屏扫描会误判为必须 `kimi login`。改为输入框已就绪则不当登录失败。token 本身有效时直接重发即可。
+- **fix · 派工唤醒/注入四连**：① Hermes usage 不再 POST 仅含 `model` 的 `external_session_usage`（服务端 400 死刷），改为 `external_model_change`，4xx 不再每轮重试。② Hermes `state.db` 无 `sessions` 表时从 `messages.session_id` 发现会话，终态仍上报 `idle` 唤醒父 inbox。③ 父会话有未完成工人时 native pane reaper 不收割（等回报时 TUI 被 1800s 杀掉导致注入无处落）。④ Kimi 终端出现 `No active session` / `run /login` 立即中文失败、禁止重试死刷。⑤ Hermes 清草稿改 End+Backspace，禁止 C-a/C-k 泄露为 `^A^K`。相关 pytest 覆盖 usage/discovery/login/reaper/clear。**需重启 host/runner**。
+- **fix · hermes-native 长关卡提示词冷启动丢贴**：法正 GLM 等首条 9 字段契约过长、TUI 未就绪时粘贴失败。≥4000 字改为写入 `omnigent_injected_task.md`、只注入短指针；粘贴等待按体积加长；大文案首次 settle 至少 45s。`test_hermes_native_bridge` 37 绿。**需重启 host**。
+
+## 2026-08-11
+
+- **fix · kimi-native 首条真投递**：不只红字，修 tip 抢焦点导致粘贴丢——就绪须 `context:` 且非 tip 独占（无 `>` 时 Escape 驱离 Welcome/Use Kimi K…）；投递前 dismiss + Backspace 清草稿（不靠 C-a/C-k）；bracketed paste 失败后对短单行（如 `/swarm on`）回退 `send-keys -l`；最多 3 轮整包重投。`test_kimi_native_executor` 42 项通过。**需重启 host**。
 
 ## 2026-08-10
 
-- **docs · DeepSeek 默认 flash + 1M 上下文**：壳侧 `ANTHROPIC_MODEL=deepseek-v4-flash[1M]`；无 `[1M]` 时 TUI 常显示 200k。PITFALLS 坑 21；WINDOWS_HANDOFF / STEPS_6_8 / W16 示例 / 部署通道表同步；生成器 Controller prompt 与模块注释写明约定。
-- **docs · PITFALLS 坑 17**：丞相网页改 Codex 时 labels 仍 stamp kimi-native-ui → 错起 Kimi + 模型 id 串台（与 agentcenter 前端 labels 跟 effective harness 修复同步）；并写清大脑壳对照（kimi-native / codex / codex-native）。
-- **docs · 部署文档 §4.3.3**：丞相换大脑界面对照表 + GPT-5.6 推理档位（sol/terra 含 max/ultra）+ Boss 真实任务验收锚点。
-- **feat · 关二爷关内多 Agent 纪律（prompt only，不 force_swarm）**：`gen_controller_bundle.py` 的 `EXECUTOR_PROMPT` + Controller 验收提示；`SKILL.md` Executor 节与军报 Results「子 Agent 清单」；部署 §4.3.4。允许 Kimi 等在本关内用内部集群加速，禁止破协作边界。
-- **fix · 角色表闭合（禁自创赵云等）**：Controller prompt 固定 主公/诸葛丞相/关二爷/法正/马良；派发写「赵云=」等视为不合格须重写；`SKILL.md` Roles + Cast Visibility、部署 §4.4 同步。
-- **docs · PITFALLS 坑 18/19 + 部署 §1.3**：Host/Server URL 与 6767 对齐纪律、`runner_disconnected` 根因；kimi catalog `kind=none` 观察项；双进程启动与自检命令。
-- **docs · 坑 19 闭合（引擎 G0B）**：monorepo `model_catalog` 已将 kimi-native 读为 subscription（见 agentcenter CHANGELOG 同日）；部署/编排侧仍须重启 runner。
+- **docs · DeepSeek 默认 1M 上下文**：Claude 壳主模型须带 `[1M]` 后缀。约定：`~/.claude/settings.json` 的 `ANTHROPIC_MODEL=deepseek-v4-flash[1M]`（默认仍为 **flash**，非 pro）；Haiku/Fable 别名同为 `deepseek-v4-flash[1M]`；Sonnet/Opus 别名 `deepseek-v4-pro[1M]`。仅写 `deepseek-v4-flash`（无后缀）时 TUI 常显示 **200k Ctx**。pi/OpenAI 兼容路径模型 id 仍用无后缀的 `deepseek-v4-flash`（与 Anthropic 兼容壳 id 不同）。见 PITFALLS 坑 21、WINDOWS_HANDOFF / STEPS_6_8 / W16 示例。
+- **fix · kimi-native 投递减假阴**：粘贴等待按内容加长（8–20s）；就绪后短 pause 再贴；粘贴未见则 Escape 后整包重投 1 次（仅未见草稿时，不双提交）；针尖前缀匹配；`/swarm on` 与用户消息分开失败文案。针对 G3「未接收粘贴」红字假阴。`test_kimi_native_executor` 40 项通过。**需重启 host/runner**。
+- **fix · 派工交付闭环（问题 1，多 harness）+ 中文红字**：丞相 `sys_session_send` 工人侧首条任务「假成功」收紧——TUI paste 族就绪/粘贴/提交校验失败才 `TurnComplete`，失败 `ExecutorError` 中文红字（可带终端末尾）。覆盖：`kimi-native`（硬等 context: + Enter 重试）、`claude-native`（DeepSeek 壳；禁 blind submit + 中文）、`hermes-native`（GLM；store 确认 + 粘贴未见不 Enter + 中文）、`goose-native`（硬 settle + 单 Enter 禁止二次）、`cursor-native`（硬就绪 + 草稿校验 + Enter 重试）、`qwen-native` inject 中文；`acp:grok-build` 超时/进程/启动失败中文。各 native executor 空消息统一「…本轮没有可发送的用户消息」。相关 inject/bridge 回归 79+ 绿；claude MCP subprocess 3 项环境超时与本次无关。**需重启 host/runner**。并发闸（问题 2）未做。
+- **fix · kimi-native 注入闭环（就绪→粘贴校验→Enter 重试）+ 中文红字**：`inject_user_message` 不再在 Welcome/冷启动时软超时后静默 TurnComplete。硬等 `context:` 就绪；粘贴后校验草稿进输入框；提交后若草稿仍在则重发 Enter；失败 `ExecutorError` 全中文（含终端末尾摘要）。修关二爷 G1 空 TUI 假成功。`pytest tests/inner/test_kimi_native_executor.py` 38 项通过。**需重启 host/runner 加载**。
+- **fix · 丞相切换大脑时 labels 跟随 effective harness**：G7 只让模型列表跟 `pickedHarness`，创建会话时 `omnigent.wrapper` 仍按 agent 默认 harness 落盘。现象：网页选丞相+Codex+gpt-5.6-*，仍 stamp `kimi-native-ui` → ensure Kimi TUI → 报 `Model "gpt-5.6-terra" is not configured in config.toml`。`handleCreate` 的 labels/能力 knobs 统一用 effective harness；默认 kimi-native 仍 stamp Kimi。vitest harness-switch + nativeWrapperLabels 回归通过；web-ui 已 rebuild。
+- **fix · Codex GPT-5.6 推理档位对齐本机目录**：静态选择器与 `CODEX_EFFORTS`/`EFFORT_VALUES` 补 `max`/`ultra`；sol/terra = low→ultra，luna = low→max（无 ultra）；去掉 5.6 目录已下架的 `minimal`。依据 `~/.codex/models_cache.json`。`pytest` reasoning_effort 5 项 + modelPicker/flow 相关 vitest 通过。
+- **verify · 丞相+Codex 真实任务 PASS（Boss）**：修复后新建会话 harness=`codex`、终端为 Omnigent REPL（`omnigent attach`，首启 dark/light 主题选择属预期），后台 `codex app-server`；Boss 确认真实任务已跑通。说明：菜单「Codex」= 大脑 harness `codex`（非 `codex-native` TUI）；真·Codex TUI 走执行器预设 `codex-native-ui`。
+- **docs · PITFALLS 坑 17 + 部署 §4.3.3**：记录 labels/harness 分叉、大脑 UI 壳对照（kimi-native→Kimi TUI / codex→Omnigent REPL / codex-native→Codex TUI）、推理档位表。
+- **feat · 关二爷关内多 Agent 纪律（生成器 prompt，不 force_swarm）**：工人 `EXECUTOR_PROMPT` 写入 Kimi 集群硬约束（本关内可用满内部多 Agent；主 Executor 整合；禁并发改同文件；军报子 Agent 清单；禁 commit/push/部署等）；Controller 验收提示；`SKILL.md` + 部署 §4.3.4。重跑 `gen_controller_bundle.py` 后生效。
+- **fix · 角色表闭合**：Controller 禁止自创三国名（赵云等）；Executor 派发必须「关二爷=…」；SKILL / 部署 §4.4 / 生成器同步。
+- **docs · PITFALLS 坑 18/19 + 启动纪律**：Host `config.server` 与 Server 端口必须一致（常见 8000 vs 6767 → `runner_disconnected`）；server+host 双进程；侧栏子 agent 非 OS 僵尸说明；kimi-native `kind=none` / `.kimi` vs `.kimi-code` 标观察中（G0B 待修引擎）。README 三分钟启动与部署 §1.3 同步。
+- **fix · G0B kimi-native catalog 读数（`kind=none` 误杀）**：`model_catalog` 对 kimi CLI 解析为 `subscription` + 静态 `kimi-code/*` 模型列表；无 CLI 时 note 指向 `~/.kimi-code` 而非「cannot run here」。spawn 行为不变。pytest `test_model_catalog`（含新增 kimi 用例）通过。**需重启 runner** 加载。
+- **chore · Codex 模型策略：仅 GPT-5.6**：catalog 静态 codex 列表由 `gpt-5.5/5.4/5.4-mini` 改为 `gpt-5.6-sol/terra/luna`；ClaudeTeam 默认 worker 模型同步；部署文档写明禁止 5.5/5.4（避免 `effort=max` + mini 触发 `unsupported_value`）。池子 `CODEX_WORKER_MODEL` 本就为 `gpt-5.6-sol`。
 
 ## 2026-08-04
 
-- **docs · PITFALLS 新增坑 14/15/16**：native harness 的 turn 级 instructions 全被 del（launch 级投递才是活路：kimi=会话级 AGENTS.md、grok=--agent-profile、hermes=SOUL.md、claude=--append-system-prompt）；父子 kimi 会话同 workdir 时 forwarder 按 mtime 必锁错 wire（改 createdAt nearest-after-launch）；kimi 无 turn 完成上报致父子唤醒链断头（新增 kimi_native_status idle poster）。随 agentcenter `ab43288`/`597fe5c`/`deef41a` 端到端实测落地。
-- **docs · 部署文档新增 §4.3.2（kimi-native 全功能）**：丞相可挂 kimi-native 大脑——AGENTS.md 角色注入 + 会话级 mcp.json/serve-mcp relay 调度（`mcp__omnigent__*`，可派全部五个 exec_* 工人）+ idle poster 唤醒链；同步修正 §4.2 生成器描述中"kimi-native 不生成"的过时表述。
+- **fix · 丞相+kimi-native 角色注入 + 强制多 agent 协同（`ab43288`）**：根修「丞相+K3 会话不派活、自己动手」——kimi-native 通道三层丢弃 instructions（executor `del system_prompt`、runner `del agent_spec`、无 --append-system-prompt 等价物）。① port 会话级 AGENTS.md 注入（角色 prompt 写入 `$KIMI_CODE_HOME/AGENTS.md`，进 system prompt）；② 新增 `tools.agents` 机器标记（harness 无关，不绑 K3）触发的强制 swarm：terminal create 写 `force_swarm` marker，首条用户消息前向 TUI 提交 `/swarm on`，失败保留重试，普通 kimi 会话零影响。端到端实测：新会话启动即 swarm，丞相 AgentSwarm 派两路斥候完成 G1 军报；相关 77 项 pytest 全绿。其余大脑通道（codex/pi/claude-sdk/claude-native/grok）审计确认注入与调度工具本就到位。
+- **feat · kimi-native 接通 omnigent MCP 调度面（`597fe5c`）**：Kimi 丞相从「内置 AgentSwarm 派同 vendor 斥候」升级为「`sys_session_send` 派 exec_* 真工人」——tools.agents/spawn 的 kimi 会话 launch 前起 serve-mcp relay + 会话级 mcp.json materialize（读全局合并、只写会话 home），`mcp__omnigent__*` 增量进入且 kimi 原生 Agent/AgentSwarm 零影响，force_swarm 降为兜底。连带三修复：forwarder 错 wire（同 workdir 父子会话按 mtime 必锁错，改 state.json createdAt nearest-after-launch）、kimi 无 turn 完成上报（新增 kimi_native_status idle poster，wire 推导终态 step.end → POST idle，posted-count 幂等）、idle POST client 缺 base_url。端到端全链实证：丞相派 exec_moonshot（「关二爷·Kimi-G1-…」挂侧栏）→ 工人 9 字段 Gate Report → 丞相唤醒验收 **G1 PASS 呈军报**；相关 111 项 pytest 全绿。
+- **feat · exec_xai/exec_zhipu 工人角色注入修复（`deef41a`）**：两个工人侧角色保真降级修复。① Grok 工人从「角色折叠进首条消息」升级为原生 `--agent-profile` 注入（frontmatter+body append 进默认 system prompt，grok 0.2.117 冒烟实证）；② GLM(hermes-native) 工人角色 prompt 完全断裂修复——per-session `HERMES_HOME/SOUL.md` 注入（SOUL.md 只从 HERMES_HOME 读，主 identity 槽）。端到端全制度实测：丞相(Kimi) 派 关二爷·Grok 执行 + 法正·DeepSeek 异 vendor 核验，法正 PASS，G1 验收呈军报+阵容战报表。
+
+## 2026-08-01
+
+- **release · v1.2.1**：07-31 晚间增量——G6/G7（丞相 harness 切换菜单 + 模型选项跟随有效 harness）、Codex 模型目录纠正为 GPT-5.6 家族三档（sol/terra/luna）+ 思考强度、DeepSeek 默认 → flash（G0d 校准上岗）、ClaudeTeam 审批模式三件套（approval-mode 开关 / 看板显示 / 完成自动通知）、飞书通道修复确认。omnigent 会话历史同日清空重置。
+- **feat · 审批模式飞书按钮端到端打通**：看板卡片三按钮（boss/manager/auto）点击直切模式并重发看板；slash `/审批` 命令上线。排障四项：ClaudeTeam 守护进程全灭 29 天重建、proxy 环境致 TLS 断连崩溃循环（守护进程改净环境运行）、双 router 冲突清理、卡片按钮 `{tag:"action"}` 被 schema V2 拒绝改直放（`fe832af`）。
+- **docs · PITFALLS 新增坑 12/13**：卡片 schema V2 按钮结构、守护进程 proxy 环境。
+
+## 2026-07-31
+
+- **release · v1.2.0**：自 v1.1.0 以来的全部内容——omnigent 内核修复 8 项（#3012 登录续期、#3016 session snapshot、#2967 reactive compaction、#2853 native 丢 prompt、#2854 harness_override kickoff、#3003 policy 读取合并、#3004 事件 ACL 缓存、#2702 idle 退避）+ 本地新发现修复 2 项（runner 系统代理劫持、kimi forwarder 错 wire）；制度 4 项（AGENT_LOG 工作日志、长程计分规则 8、阵容可见性、生成器 hermes/kimi 扩展）；模型池 2 项（GLM 5.2 入池：前端 70/后端 65；K3 丞相上线：kimi-native + thinking high + 1M）；Web UI 三连修（选择器分类、「丞相」显示、kimi 网页选模型）。
+- **feat · G6/G7**：模型选择器 harness 回退扩展到 codex（G6）；丞相 harness 切换菜单修复——自定义 agent 自身 harness 合入选项、模型选项跟随 pickedHarness（G7）。
+- **fix · Codex 模型目录**：静态目录从过时的 gpt-5.5/5.4 纠正为 GPT-5.6 家族（sol/terra/luna），每个模型挂思考强度（minimal→xhigh），create 带 reasoning_effort。
+- **score · DeepSeek 默认 → flash**：`~/.claude/settings.json` ANTHROPIC_MODEL=deepseek-v4-flash + 生成器同步；G0d 校准一次过（后端 60）；新身份不继承 Pro 分数（注册表 rev→35）。
+- **feat · ClaudeTeam 审批三件套**：`approval_mode = boss|manager|auto` 配置化 + `claudeteam task approval-mode` 显示/切换命令；看板标题显示审批模式、需审批行标等老板/等主管；任务完成自动群发通知卡片。全套 1159 项测试 0 失败。
+- **score · GLM 5.2**：前端 70→80（G6/G7 连过，注册表 rev→34）。
+- **score · Codex 本轮总结认定**：修bug 75→80（#2853 实现+测试经 controller 复验视同验收）；连续两轮额度尽死于 runner_disconnected，排班须预设接管人；后续 omnigent 修复改派 Kimi+子代理群（注册表 rev→33）。
+- **verify · 6 路并行验证**：#2904 本机不可复现（tmux 3.6b）；#2539 单用户不可复现（升级条件=多用户）；#2854 确认可复现；#3003 属实降级 P2；#3004 确认属实（~13k 查询/turn）；#2702 属实（~3.6% 单核/terminal）。
+- **fix · #2854**：runner crash-recovery 重放的 kickoff turn 现在正确消费 harness_override（`c7a7073`）。
+- **perf · #3003**：policy engine 每次 build 的会话读取 6 次→1 次、全树扫描 2 次→1 次，评估输出逐项比对不变（`b8c2e95`）。
+- **perf · #3004**：streamed event POST 加 1.5s TTL ACL/会话缓存，实测 13.0→0.65 SQL/POST（-95%），拒绝路径 fail-closed 不变（`26199b0`）。
+- **perf · #2702**：native idle watcher 退避 5Hz→0.2Hz（25×），failed 会话 watcher 不再泄漏（`b6994fd`）。
+
+## 2026-07-27
+
+- **feat · G2-D 闭合（#2967 reactive compaction）**：generic/headless harness 上下文溢出后轮询快照确认空闲→服务端 compact→重载重试一次；/compact 使用 session model_override；262 项测试通过（`0d9c7d1`）。
+- **score · G2 长程单元结算**：Codex Agent协同 60→75（规则 8，6 子关 +15 封顶，注册表 rev→29）。
+- **feat · Web UI 三连修**：选择器分类修复（自定义 agent 不再消失/撞名，G4）→ controller 显示「丞相」（G4）→ kimi-native 网页选模型（G5/G5b，k3/kimi-for-coding/kimi-for-coding-highspeed，自定义 agent 经 harness 回退同享）。
+- **score · GLM 5.2 前端开疆**：G4 校准 60 → G5/G5b 生产关 70（注册表 rev→32）；连续两关撞 hermes 迭代上限需收尾，后续派关缩小单关体量。
+- **feat · 阵容可见性（Cast Visibility）**：派发消息必须写 `角色=模型（agent id）`；会话命名 `角色·模型-关卡-简述`；多关任务收尾必出阵容战报表。SKILL.md + 生成器 Controller prompt 同步，线上生效。
+
+## 2026-07-24
+
+- **chore · 提交 07-23 已验证修复**：#3016（session snapshot 可靠性）与 #3012（登录续期）按语义拆分提交入库；提交前复跑相关回归 475 项 + Accounts/OIDC 集成 32 项全部通过，`ruff check omnigent tests` 零错误。
+- **note · G2-D 残留未提交**：`server/routes/sessions.py`（/compact 使用 session model_override）、`tests/server/integration/test_sessions_compact.py`、`tests/runner/test_app_sessions_native.py`（reactive compaction 测试）属于 G2-D1/D2 关卡产物，该批关卡以 runner_disconnected 中断、未经终审，暂留工作树，待验证关跑完后再提交。
+- **feat · AGENT_LOG 多 Agent 工作日志制度**：新建项目根 `AGENT_LOG.md`（每个 Agent 完成任务后末尾追加一条：做了什么/证据数字/涉及提交/遗留）；agentpeihe SKILL.md 的 Executor/Controller 工作流同步挂载（两仓一致）；全局事实源 `~/.agent-collaboration/agent-log-convention.md`，已挂载 Codex/Claude/Kimi/Grok/Hermes/Workbuddy 六家 CLI 全局配置，QoderWork 需手动粘贴。
+- **score · GLM 5.2 入池（关二爷候选）**：经 Hermes + 火山方舟 Agent Plan 坐实身份（`glm-5-2-260617` dated-pin）；G0c 后端校准关一次过 PASS，后端实现 0→60（证据 `20260724-agentcenter-g0c-glm52`）；注册表 rev→26。
+- **feat · 长程任务计分（SKILL 规则 8，Boss 批准）**：≥3 关联关卡的长程单元按单元结算——基础 +5 + 每个追加子关 +2、封顶 +15，未闭合记暂记，中途换人按实际子关分别记分，Controller 在 Agent协同 维度同规则结算；G2 长程单元（#3012 的 G2-B1/B2/B3 + G2-D/#2967）已登记暂记，G2-D 验证关保留给 Codex（注册表 rev→27）。
+- **feat · 生成器 hermes 嗅探 + GLM 进自动池**：`gen_controller_bundle.py` 解析 hermes 配置自动出 `exec_zhipu`（hermes-native，显示名 hermes-GLM5.2（huoshan），与 pi zhipu 去重）；线上 bundle 重建 + server 重启完成；hermes-native 直发烟测 PASS（GLM 5.2 实答"收到。"）。controller 大脑 codex 额度未恢复，丞相全链路暂不可用。
+
+## 2026-07-23
+
+- **fix · Omnigent 会话可靠性**：修复 #3016 的瞬时 session snapshot 失败会把 worktree 永久回退到 runner 全局目录；恢复连接后会重新读取 session worktree。（07-24 已提交）
+- **fix · Omnigent 登录续期**：修复 #3012。Accounts/OIDC 登录可安全轮换续期凭证；host/runner 遇 runtime token 过期或一次 401 时自动续期并仅重试一次，403 仍直接拒绝。续期拒绝后要求重新登录，绝不退回权限更宽的 session JWT；Databricks 流程不变。（07-24 已提交）
+- **verify · G2-B3**：客户端相关回归 291 项、续期/权限边界 44 项与 61 项、Accounts/OIDC 集成 32 项均通过；静态检查和独立审查通过。下一关为 #2967 的只读立项审计，尚未授权实现。
+- **fix · Ruff 历史遗留清零（Kimi 99 元版 执行）**：修复 HEAD 上遗留的 4 个 ruff 错误——`cli.py` platform-info 超长行拆行、`test_distribution_metadata.py` import 排序 + 超长行拆行、`test_platform_capabilities.py` 超长行拆行；`ruff check omnigent tests` 全部通过，受影响测试 8 项通过。另复核 G2-B3 改动：相关单元测试 382 项 + 集成测试 32 项复跑全部通过。
 
 ## 2026-07-22
 
