@@ -4,6 +4,10 @@
 
 ---
 
+## 2026-09-29
+
+- **docs · 会话命名补通道消歧三段式（`法正·codebuddy·DS`）**：Boss 明令——CodeBuddy 通道的 DeepSeek 会话名一律 `<角色>·codebuddy·DS`（禁再用 `法正·DeepSeek-v4.1`）。规则：同一模型经多通道接入时用 `<角色中文名>·<通道>·<模型缩写>` 三段式，换通道视同换模型用新名新建会话。生成器模板「会话池」「立项关」两节 + SKILL.md Session naming + 会话池文档同步（两仓）。`--brain pi --no-codex` 重跑后池表不变（5 工人）；codebuddy 探测默认模型 deepseek-v4.1-flash → vendor 自动判 deepseek，与 Boss「codebuddy 即 DeepSeek」明令一致（v33 回正 hy4 后的再次切换正式烘入）。伏羲项目侧：旧会话「法正·DeepSeek-v4.1」（G96–G99 复核完成）已 tombstone。
+
 ## 2026-09-28
 
 - **feat · Grok 4.6 → 4.7（xhigh effort）**：`~/.grok/config.toml` 已是 `models.default = "grok-4.7"` + `default_reasoning_effort = "xhigh"`（grok CLI 1.0.41，stable 通道）。exec_xai（acp:grok-build = `grok agent stdio`）模型与 effort 均取 CLI 默认，壳侧零改动。仓库侧同步：生成器 PI_PROVIDERS pi 备选 `grok-4.7`（两仓）、omnigent onboarding 兜底 pin `xai: grok-4.7`（两仓）、部署文档 provider 示例 `default: grok-4.7`（agentpeihe 两仓 + ClaudeTeam 两份）。注册表 Grok 行补注（floating-alias 延续、分数不动）。重跑 + 带 `--agent` 重启（controller v32，池表 skip 注 pi:grok-4.7）。
