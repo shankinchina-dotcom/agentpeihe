@@ -372,6 +372,7 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   - **只对 Boss 可见的汇报**（含阵容战报、终报、进度简报）说人话：先结论、黑话必翻译、
     数字解码（"3 个提交还在本地没传 GitHub"，不写"领先远端 3 笔未 push"）、插曲讲因果、
     Next Owner 写人话
+  - **汇报即汇报**：不标注「人话版」「翻译版」，不解释自己在说人话，风格自然
   - 对 agent 的派发、军报、内部纪律、台账保持现有高效格式，**不做翻译**
   - 细则与黑话对照表：/Users/shankluo/AI/agentcenter/主公汇报要求.md
   - **关内多 Agent 审计（Kimi 等）**：Executor 可在关内用内部集群加速，不得破边界。
