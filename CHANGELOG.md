@@ -4,10 +4,18 @@
 
 ---
 
+## 2026-09-30
+
+- **feat · 「对主公说人话」入丞相 prompt（controller v34）**：Boss 钦定（2026-09-30）——只对 Boss 可见的汇报（战报/终报/简报）说人话，对 agent 派发、军报、内部纪律保持高效格式。生成器模板新增「对主公汇报（说人话）」节（~300B，细则引用工作区《主公汇报要求.md》，对照表不入 prompt 保坑 35 预算）；重跑后 prompt 10,126B / 预算 12KB。在跑旧丞相会话带旧 prompt，新开即生效。
+
+---
+
 ## 2026-09-29
 
 - **docs · 会话命名补通道消歧三段式（`法正·codebuddy·DS`）**：Boss 明令——CodeBuddy 通道的 DeepSeek 会话名一律 `<角色>·codebuddy·DS`（禁再用 `法正·DeepSeek-v4.1`）。规则：同一模型经多通道接入时用 `<角色中文名>·<通道>·<模型缩写>` 三段式，换通道视同换模型用新名新建会话。落点：生成器模板「会话池」「立项关」两节 + SKILL.md Session naming 条 + docs/PROMPT_COMPILER_SESSION_POOL.md 会话池节（两仓同步）。`--brain pi --no-codex` 重跑后池表不变（5 工人，大脑 pi）；codebuddy 嗅探默认模型 deepseek-v4.1-flash → vendor 自动判 deepseek，Boss「codebuddy 即 DeepSeek」明令正式烘入（v33 回正 hy4 后 Boss 又切回 DS，本次补重跑）。伏羲项目侧：旧会话「法正·DeepSeek-v4.1」（G96–G99 复核完成）已 tombstone，新会话「法正·codebuddy·DS」首派 G100 复核 PASS。
 - **docs · PITFALLS 坑 36/37 落笔（伏羲 G101 发布关实证）**：坑 36＝harness 240s 空闲看门狗 × 长任务（tauri build 20 分钟）→ Executor turn 内同步等待必楔死（`turn exceeded the 240s harness idle watchdog`）；分段交棒（启动后台任务→交棒→Controller 盯 /tmp 日志→派收尾棒）是唯一正确模式，Controller 契约禁写「等完成才交棒」。楔死 turn 的后台进程幸存（G101 实证：四条验收日志 + 构建 EXIT:0 全在）。坑 37＝发布关契约漏版本面——伏羲 `changelog.test.ts` 把 package.json/tauri.conf.json/Cargo.toml/changelog.ts 首条锁同版本（两 lock 随动），契约只放行 tauri 一处必撞红灯；另 `npm run build:desktop` 不产 dmg，出包是 `npx tauri build`（beforeBuildCommand 串起前者）。两仓同步。
+
+---
 
 ## 2026-09-28
 
@@ -16,14 +24,20 @@
 - **fix · CodeBuddy 模型链路实证 + 池表回正（controller v33）**：实测三层机制——TUI `/model` 与 `config set -g model` 都写全局默认（ACP currentModelId 跟随，exec_codebuddy 派单模型即随之切换）；`--model` 启动参数只管当次进程；ACP `session/set_model` 只管当次会话。Boss 裁 exec_codebuddy「跟随 CLI 默认」：TUI 切模型后须重跑生成器 + 重启保持池表/vendor 一致（生成器 sniff 动态判定，零代码）；本次 Boss 切回 hy4-preview-f 后已重跑回正（v33，exec_codebuddy | tencent）。要钉死派单模型不受 TUI 影响，改 acp command 加 `--model <id>`。
 - **feat · CodeBuddy 默认模型切 deepseek-v4.1-flash（vendor tencent→deepseek）**：`codebuddy config set -g model deepseek-v4.1-flash`（实测 `config set -g model` 对 ACP 生效，session/new currentModelId 回显 deepseek-v4.1-flash）——交互/ACP/派单工人全局默认统一切换。生成器配套升级：新增 `sniff_codebuddy_model`（读 `codebuddy config get model`）+ `codebuddy_vendor`（按默认模型实际后端判 vendor：deepseek/glm→zhipu/kimi→moonshot/minimax/hy→tencent），exec_codebuddy 的 vendor 与池表备注、通道隔离行动态化，不再写死 tencent。重跑 `--brain pi --no-codex` + 带 `--agent` 重启（controller v31）：池表 exec_codebuddy 行 = acp:codebuddy | deepseek | 默认 deepseek-v4.1-flash。烟测：AcpExecutor 直驱实回「收到」。注册表 DeepSeek V4.1 Flash 行补 CodeBuddy 通道路由。
 
+---
+
 ## 2026-09-24
 
 - **feat · CodeBuddy 入池（exec_codebuddy，vendor=tencent）**：背景是 hermes 连火山 Coding Plan 额度用尽。CodeBuddy CLI（2.157.0）原生支持 ACP（`codebuddy --acp`，stdio ndJson），实测 initialize → session/new（默认模型 hy4-preview-f，x0.00 credits）→ session/prompt 全链路通过；omnigent 通用 acp harness 零代码接入——`~/.omnigent/config.yaml` 的 acp.agents 加 `{name: CodeBuddy, command: "codebuddy --acp"}`（harness id `acp:codebuddy`）。生成器新增 has_codebuddy 检测 + exec_codebuddy 工人块（比照 exec_xai/Grok ACP 写法），通道隔离节加 CodeBuddy 行；`ensure_acp_config` 改按条目幂等补齐。模型跟 CLI 默认（不钉）。另加 `--no-codex` 开关（Boss 裁：codex ChatGPT 登录不进池），压住 exec_openai 工人与 codex 大脑候选。验证：AcpExecutor 直驱 `codebuddy --acp` 实回「派单成功」；`acp_agents()` / `harness_catalog()` 均见 `acp:codebuddy`；`--brain pi --no-codex` 重跑后池 = exec_deepseek / exec_moonshot / exec_xai / exec_codebuddy / exec_zhipu / exec_deepseek_hermes，大脑仍是 pi(deepseek-flash)。
 - **ops · GLM 5.2 冷却下架（exec_zhipu 出池）**：火山方舟 Agent Plan 到期不续费，注册表 GLM 5.2 行加 `cooldown-until: 2026-12-31`（恢复时删除重跑即可）；重跑生成器后池不再含 exec_zhipu，bundle 目录同步 purge。controller v30。另实测 CodeBuddy 模型选择机制：session/new 的 model 字段被忽略、session/set_model 支持但 omnigent executor 不调用、`--acp --model <id>` 启动参数钉住生效（exec_codebuddy 如需钉模型改 acp command 即可）。
 
+---
+
 ## 2026-09-11
 
 - **feat · DeepSeek V4.1-Flash 切换（规范名 deepseek-flash，官方 2026-09-10 发布）**：0731 与 vision-exp 官方双双下线（旧名暂时路由 V4.1）——三通道统一切规范名：~/.claude/settings.json 全别名 `deepseek-flash[1M]`、~/.hermes/config.yaml `default: deepseek-flash`、生成器 docstring/pi 备选/通道隔离/pool 注释同步（两仓，prompt 9,091→9,042B）。V4.1 原生视觉 + 原生 1M（输出 384K）、Terminal-Bench 2.1 90.6（vision-exp 83.9）、输入价 2元/百万（高峰）。注册表 rev 40→41：V4.1 新身份继承 vision-exp 后端 60（Boss 钦定留痕，沿 vision-exp 继承 flash 先例），vision-exp / 0731 / hermes 直连三旧身份标 deprecated。重跑生成器 + 带 `--agent` 重启（controller v28，description 2026-09-11）。烟测：Anthropic 端点 `deepseek-flash[1M]` 文本实回「收到」+ 1x1 PNG 实回「粉色」（model 回显无降级）；hermes chat 实答 4。背景：旧纪元会话 09-10 15:15 经 UI 删除（G63 军报前提作废），Boss 改裁「现在就切」；G64 根修向新丞相（K3）重派 + G65 V4.1 校准关立项。
+
+---
 
 ## 2026-09-09
 
@@ -39,9 +53,13 @@
 - **fix · controller prompt 撞 tmux 16KB 硬顶（坑 34/35）→ A 治标落地 + B 根修立项（G64）**：claude-native 子会话终端 `--append-system-prompt` 注入的是 controller 完整 prompt（runner/app.py:5909 按 session.agent_id 解 spec，子会话 agent_id=parent 的 controller）——prompt 随模型池备注涨至 10,718B，启动命令包 ≈16.9KB 超本机 tmux 16KB imsg 硬顶（实测 16,000 过 / 16,384 拒），09-08 晚起 192 次 `command too long`，关二爷·DeepSeek 派发全挂（native_terminal_start_failed）。A（Boss 裁决 A+B）：生成器 9 处修剪（模型池备注去重 + 通道隔离/角色表/编译器/会话池/compact/执行原则/立项关冗词压缩，规则逐条保留）→ 9,091B；重跑 + 带 `--agent` 重启（controller v27）；tombstone 旧会话 conv_dc43eb01（105K tokens 不可恢复）→ 丞相按 G61 先例同名重派 G63——新会话 conv_ea740ec0 status=running、ctx 69K、零新增 command too long（vision-exp 首个正式关开跑）。B：G64 根修立项（子会话改注入子 agent 自己 spec prompt；无 spec 且 >12KB 降级 WARN 不硬失败，两仓 + pre-commit + 活体复派验证）已派丞相排期（G63 军报先行）。坑 34（子代理 runner 一次绑定终身 → 重启后旧子会话 runner_failed_to_start；close 跨注册时代盲区）、坑 35 录入 PITFALLS（两仓）。
 - **docs · 部署文档新增 §4.7 日常操作卡**：UI 主路（找丞相，固定主会话）/ 异常三读数鉴别（status、error code、runner 日志）/ 复位=close+同名重派 / 变更后三条纪律（带 `--agent` 重启、盯 `command too long`、prompt ≤12KB 预算）/ API 应急注入信封（`data` 包裹 + content 必须 list）+ §4.3 prompt 尺寸预算条、附录 A 踩坑表第 8 行。
 
+---
+
 ## 2026-08-21
 
 - **fix · kimi 0.37.2 TUI 适配（坑 32，omnigent 仓）**：多行粘贴被 0.37.2 折叠成 `[paste #N +M lines]` 占位符 → 草稿检测改认占位符；信任页改方向键菜单（默认 Don't trust、Esc=退出 TUI）→ `_settle_pane` 改读 `❯` 选中行 Up 导航 + Enter，绝不发 Esc。回归 6 项、executor 64 项 + kimi 全套 143 项绿，tests/inner 1752 过、tests/runner 1192 过（残留失败均 macOS 既有环境问题，干净树复现）；活体：/tmp 全新目录 46 行粘贴一次投递成功回 "OK"，Boss 真实会话重发链路确认恢复。
+
+---
 
 ## 2026-08-20
 
@@ -55,6 +73,8 @@
 - **docs · 部署文档 §4.3.3 刷新**：丞相大脑菜单现为全量清单（Kimi K3 TUI 经 坑 31 修复后真实可选）；补 Codex 冷却期 pi 默认说明与「换脑验收看 TUI/runner 日志」锚点。
 - **docs · PITFALLS 坑 28/29/30**：kimi 新目录信任引导卡死；纯 API 创建 kimi-native 顶层会话首轮注入 stalled（根因未定位，先记症状与绕法）；codex 配额冻结的「先记 cooldown 再换脑」处置流程。
 
+---
+
 ## 2026-08-19
 
 - **feat · 三段式 Prompt 编译器 `compile_gate_prompt.py`**：派关消息标准化为 固定头（角色纪律＋项目 AGENTS.md＋repo map）＋本关契约＋产物指针；initial/followup 双模式，同输入逐字节同输出（无时间戳）；Controller prompt 硬规则「派关必须用 sys_os_exec 调编译器、输出逐字作 sys_session_send 的 args，禁止手拼」。
@@ -66,13 +86,19 @@
 - **docs · PITFALLS 坑 26/27 + 设计文档**：坑 26 双副本分叉（生产从嵌套副本 uv tool 安装，顶层 fork 已冻结并加 README 警示）；坑 27 `sys_session_send` 真名 `title` + create-or-continue 语义。新增 `docs/PROMPT_COMPILER_SESSION_POOL.md` 设计说明。
 - **docs · PITFALLS 坑 22/24/25**：坑 24 补 K3 盒线 `│ >`（无反应 / 输入框未就绪）；禁止对 Welcome Escape。新坑 25：Hermes 长粘贴收成 `[Pasted text #N]` 不是没贴进去。坑 22 的「Escape 清 Welcome」改为只对 tip。
 
+---
+
 ## 2026-08-18
 
 - **docs · PITFALLS 坑 24 再修**：红字主因是 Welcome 被当成模态后 Escape 连打，不是 OAuth、也不是再打 `/login`。引擎改为静等 `>`、禁止对 Welcome 按键。
 
+---
+
 ## 2026-08-14
 
 - **docs · PITFALLS 坑 23/24 + 登录分流**：坑 23 收法正 inbox / Hermes 400 / `^A^K`；坑 24 写清 Kimi 0.36 冷启动 `No session yet` / TUI `/login` ≠ `kimi login` CLI。WINDOWS_HANDOFF、STEPS_6_8、W15、部署 §2 登录段同步。引擎提交 `f28777b`（新开会话生效）。
+
+---
 
 ## 2026-08-10
 
@@ -84,10 +110,14 @@
 - **docs · PITFALLS 坑 18/19 + 部署 §1.3**：Host/Server URL 与 6767 对齐纪律、`runner_disconnected` 根因；kimi catalog `kind=none` 观察项；双进程启动与自检命令。
 - **docs · 坑 19 闭合（引擎 G0B）**：monorepo `model_catalog` 已将 kimi-native 读为 subscription（见 agentcenter CHANGELOG 同日）；部署/编排侧仍须重启 runner。
 
+---
+
 ## 2026-08-04
 
 - **docs · PITFALLS 新增坑 14/15/16**：native harness 的 turn 级 instructions 全被 del（launch 级投递才是活路：kimi=会话级 AGENTS.md、grok=--agent-profile、hermes=SOUL.md、claude=--append-system-prompt）；父子 kimi 会话同 workdir 时 forwarder 按 mtime 必锁错 wire（改 createdAt nearest-after-launch）；kimi 无 turn 完成上报致父子唤醒链断头（新增 kimi_native_status idle poster）。随 agentcenter `ab43288`/`597fe5c`/`deef41a` 端到端实测落地。
 - **docs · 部署文档新增 §4.3.2（kimi-native 全功能）**：丞相可挂 kimi-native 大脑——AGENTS.md 角色注入 + 会话级 mcp.json/serve-mcp relay 调度（`mcp__omnigent__*`，可派全部五个 exec_* 工人）+ idle poster 唤醒链；同步修正 §4.2 生成器描述中"kimi-native 不生成"的过时表述。
+
+---
 
 ## 2026-07-22
 
@@ -106,6 +136,8 @@
 - **score · 评分体系定稿**：单分制改 7 维度（前端/后端/Agent 协同/修 bug/架构/检索/安全）；G5diag 终审——Grok 65（两层根因全中）/ GPT-5.6 网页版 60（第一层）/ DeepSeek 0（未命中）；GPT-5.6 与 Codex CLI 拆分为两个身份
 - **release · v1.0.0 定版**（agentcenter + agentpeihe 双仓）
 
+---
+
 ## 2026-07-21
 
 - **feat · G5 核心验收 8/8 通过**：Controller 拆关卡 → 异 vendor Executor/Reviewer 自动接力，全程无人工复制粘贴；阵型 = K3 壳（claude-sdk）→ executor_claude → reviewer_deepseek
@@ -118,3 +150,9 @@
 - **docs · 双机部署指南 + Windows 交接文档（G6）**：自包含 WSL2 协议（mirrored 网络/代理三活/8 项验收）
 - **docs · PITFALLS.md 初版**：10 个实测坑（agent 注册/显示/headless 审批死锁/pi schema/runner 凭证/ CC Switch 换皮/代理混用）
 - **chore · Monorepo 成型**：agentcenter = omnigent-zh-cn + ClaudeTeam + agentpeihe（subtree 合并，独立维护不跟上游）
+
+- **feat · Grok 4.6 → 4.7（xhigh effort）**：`~/.grok/config.toml` 已是 `models.default = "grok-4.7"` + `default_reasoning_effort = "xhigh"`（grok CLI 1.0.41，stable 通道）。exec_xai（acp:grok-build = `grok agent stdio`）模型与 effort 均取 CLI 默认，壳侧零改动。仓库侧同步：生成器 PI_PROVIDERS pi 备选 `grok-4.7`（两仓）、omnigent onboarding 兜底 pin `xai: grok-4.7`（两仓）、部署文档 provider 示例 `default: grok-4.7`（agentpeihe 两仓 + ClaudeTeam 两份）。注册表 Grok 行补注（floating-alias 延续、分数不动）。重跑 + 带 `--agent` 重启（controller v32，池表 skip 注 pi:grok-4.7）。
+- **docs · Grok /model 写全局实证**：tmux 真实 TUI 实验——`/model grok-4.6` 同步改写 config.toml [models] default（机制与 CodeBuddy 一致：TUI 切换即改派单默认）；差异是 grok vendor 恒为 xai，池表无需重跑。部署文档 Grok 行补机制说明（两仓）。实验后 config 已恢复 grok-4.7 xhigh。
+- **fix · CodeBuddy 模型链路实证 + 池表回正（controller v33）**：实测三层机制——TUI `/model` 与 `config set -g model` 都写全局默认（ACP currentModelId 跟随，exec_codebuddy 派单模型即随之切换）；`--model` 启动参数只管当次进程；ACP `session/set_model` 只管当次会话。Boss 裁 exec_codebuddy「跟随 CLI 默认」：TUI 切模型后须重跑生成器 + 重启保持池表/vendor 一致（生成器 sniff 动态判定，零代码）；本次 Boss 切回 hy4-preview-f 后已重跑回正（v33，exec_codebuddy | tencent）。要钉死派单模型不受 TUI 影响，改 acp command 加 `--model <id>`。
+- **feat · CodeBuddy 默认模型切 deepseek-v4.1-flash（vendor tencent→deepseek）**：`codebuddy config set -g model deepseek-v4.1-flash`（实测 `config set -g model` 对 ACP 生效，session/new currentModelId 回显 deepseek-v4.1-flash）——交互/ACP/派单工人全局默认统一切换。生成器配套升级：新增 `sniff_codebuddy_model`（读 `codebuddy config get model`）+ `codebuddy_vendor`（按默认模型实际后端判 vendor：deepseek/glm→zhipu/kimi→moonshot/minimax/hy→tencent），exec_codebuddy 的 vendor 与池表备注、通道隔离行动态化，不再写死 tencent。重跑 `--brain pi --no-codex` + 带 `--agent` 重启（controller v31）：池表 exec_codebuddy 行 = acp:codebuddy | deepseek | 默认 deepseek-v4.1-flash。烟测：AcpExecutor 直驱实回「收到」。注册表 DeepSeek V4.1 Flash 行补 CodeBuddy 通道路由。
+
