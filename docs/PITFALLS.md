@@ -303,3 +303,10 @@
 - **根因**：Controller 写契约时没读 changelog.ts 文件头注释（「release 时五处联动」写得明明白白），凭「版本号在 tauri.conf.json」的直觉圈 Allowed；构建命令沿用 AGENTS.md 验收清单字面，没核 G89 在案的「build:desktop 不产包」记录。
 - **怎么解决**：发布关契约模板固定为——Allowed 版本面五处（package.json、tauri.conf.json、Cargo.toml、两个 lock、changelog.ts 新条目）＋构建命令 `npx tauri build`（带 cargo PATH 与 PROTOC）；Stop 条件保留「验收红即停、不修代码」。Executor 撞锁停红灯＋如实上报是正确行为，Controller 修约重派即可，不算关卡失败。
 - **同类避免**：契约的 Allowed 清单先问「有没有测试/脚本把这份文件和别的文件锁在一起」——版本号、i18n 键集、schema 形状这类「一致性锁」在仓库里越来越多，圈允许面时先 grep 测试断言再下笔。
+
+### 坑 38：SQLAlchemy 窗口函数 JOIN 子查询 → SQLite 选「扫全表 × 线性匹配」灾难计划；拆成「先取 id 再取行」（2026-10-10）
+
+- **现象**：「智能体」面板永远「加载中…」，GET `/v1/sessions/{id}/child_sessions` 30 秒 0 字节超时，server 400~570% CPU 狂转，其余接口毫秒级正常。第一反应是「关账会话写锁堵读」——实测写锁 0.02 秒即拿到，库内容随手查都在 0.1 秒内，重启 server 后问题依旧。
+- **根因**：`list_latest_message_items_for_conversations` 的单条 SQL（宽行 JOIN ranked 窗口子查询 + 外层 ORDER BY）被 SQLite 选了灾难计划：为省掉外层排序，按 `(workspace_id=?)` 索引顺序扫全表 16,586 行（连 data 大字段约 50MB 溢出页一起读），每行再线性 SCAN 物化子查询（数千条）。EXPLAIN QUERY PLAN 实锤：`SEARCH … (workspace_id=?)` + `SCAN anon_1`。库快照实测 160~200 秒。`sample` 签名是 sqlite3VdbeExec / sorter / pread 狂转——**CPU 忙本身就排除「空等锁」**，等锁的线程是睡着的。
+- **怎么解决**：两步走——第一步只执行 ranked 子查询取回 `row_num<=N` 的 item_id（走索引，0.01s）；第二步 `WHERE id IN (ids)` 按主键取宽行。快照实测 160~200s → 0.03~0.7s，生产重启后接口 0.033s。配套前端兜底：child_sessions 请求加 8s AbortSignal 超时，走既有 failedToLoad 错误态，不再无限「加载中…」。诊断纪律：怀疑慢查询时，cp 主 db + wal + shm 三件套得安全快照，写最小复现脚本直连 store 分段计时（init / list / 查询各打印一行），别先信「锁」直觉。
+- **同类避免**：凡「子查询/窗口函数 + JOIN + 外层 ORDER BY」的 ORM 查询，上线前看一眼 EXPLAIN QUERY PLAN——出现 `SCAN <子查询>` 或只用首列的索引扫描就要警惕：优化器为省一次 sort 可能宁可扫全表。拆成「先取 id 再取行」几乎总是对的（id 走索引、行走主键）。排查卡顿先看 CPU：忙＝在算在扫，闲＝在等锁等 IO，方向相反别搞混。
