@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-10-23
+
+- **feat · CodeBuddy 多通道钉模型（ds/mm/mimo/hy4 四通道入池）**：Boss 下令落地——CodeBuddy 从「单通道跟全局默认」扩展为「多通道钉模型」池。`~/.omnigent/config.yaml` 的 acp.agents 多 name 条目（CodeBuddy DS / CodeBuddy MM / CodeBuddy MiMo / CodeBuddy HY4，name 自动 slug 化为 harness id），acp command 均钉 `--permission-mode bypassPermissions --effort max --autocompact auto`（最高思考档 + 跟随模型完整窗口的最高上下文）：`exec_codebuddy_ds` / `acp:codebuddy-ds` 钉 deepseek-v4.1-flash（vendor=deepseek，**关二爷默认通道**）；`exec_codebuddy_mm` / `acp:codebuddy-mm` 钉 minimax-m3.1-flash（vendor=minimax，**法正默认通道**）；`exec_codebuddy_mimo` / `acp:codebuddy-mimo` 钉 mimo-v2.6-pro（vendor=xiaomi）、`exec_codebuddy_hy4` / `acp:codebuddy-hy4` 钉 hy4-preview（vendor=hunyuan），两条备选可用、不改变默认归属。原 `exec_codebuddy` / `acp:codebuddy`（跟 CLI 全局默认）保留为手工位。生成器同步：ACP_AGENT_ENTRIES 四新条目 + build() 四个工人注册 + CONTROLLER_PROMPT_TMPL（通道隔离段、角色分配默认——关二爷默认 DS / 法正默认 MM，换默认须 Boss 明令；会话池三段式示例从旧「法正·codebuddy·DS」更新为「关二爷·codebuddy·DS / 法正·codebuddy·MM」）。已验证：CLI 级双开冒烟 + omnigent 端到端派发冒烟均 PASS（进程 argv 与钉定一致、自报模型正确、并发共享 `~/.codebuddy` 无冲突）。落点：生成器 + 部署文档通道隔离表 CodeBuddy 两行 + §4.3.2 池清单 + SKILL.md Session naming 条 + docs/PROMPT_COMPILER_SESSION_POOL.md 会话池节。
+
+---
+
 ## 2026-09-30
 
 - **feat · 「对主公说人话」入丞相 prompt（controller v34）**：Boss 钦定（2026-09-30）——只对 Boss 可见的汇报（战报/终报/简报）说人话，对 agent 派发、军报、内部纪律保持高效格式。生成器模板新增「对主公汇报（说人话）」节（~300B，细则引用工作区《主公汇报要求.md》，对照表不入 prompt 保坑 35 预算）；重跑后 prompt 10,126B / 预算 12KB。在跑旧丞相会话带旧 prompt，新开即生效。

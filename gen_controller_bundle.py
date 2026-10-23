@@ -27,6 +27,14 @@
   - Codex 工人: harness codex headless；Codex 可做丞相（--brain codex）；--no-codex 压住 exec_openai 与 codex 大脑候选
   - CodeBuddy 工人：ACP 协议（acp:codebuddy，command=codebuddy --acp），模型跟 CLI 默认
     （codebuddy config set -g model <id> 改全局默认），vendor 按默认模型实际后端判定
+  - CodeBuddy 多通道钉模型（2026-10-23 Boss 定）：CodeBuddy DS / CodeBuddy MM 两条 ACP
+    通道（slug 化 acp:codebuddy-ds / acp:codebuddy-mm），分别钉 deepseek-v4.1-flash /
+    minimax-m3.1-flash + --effort max --autocompact auto，
+    均保留 --permission-mode bypassPermissions；exec_codebuddy_ds=关二爷默认通道，
+    exec_codebuddy_mm=法正默认通道；
+    另有 CodeBuddy MiMo（acp:codebuddy-mimo，钉 mimo-v2.6-pro）/ CodeBuddy HY4
+    （acp:codebuddy-hy4，钉 hy4-preview）两条备选可用通道，同样钉
+    --effort max --autocompact auto + --permission-mode bypassPermissions，不改变默认归属
   - cooldown: 注册表 Scores 表 cooldown-until 未到期 → 该模型不出现在 tools
 """
 from __future__ import annotations
@@ -293,6 +301,15 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   - GLM 5.2：exec_zhipu / hermes-native（方舟 Agent Plan，钉 -m glm-5-2-260617 --provider volcengine-agent-plan），vendor=zhipu
   - Kimi：只走 kimi-native（exec_moonshot / 网页手工），禁进 Claude 壳；官方 Claude 可选非默认；Codex 丞相/工人独立
   - CodeBuddy：exec_codebuddy / acp:codebuddy（ACP），vendor 按默认模型实际后端（{codebuddy_vendor}）
+  - CodeBuddy 多通道钉模型（2026-10-23 Boss 定）：
+    exec_codebuddy_ds / acp:codebuddy-ds（模型 deepseek-v4.1-flash 钉住 + --effort max --autocompact auto），
+    vendor=deepseek，**关二爷默认通道**；
+    exec_codebuddy_mm / acp:codebuddy-mm（模型 minimax-m3.1-flash 钉住 + --effort max --autocompact auto），
+    vendor=minimax，**法正默认通道**；两条通道 ACP 命令均含 --permission-mode bypassPermissions；
+    备选可用（2026-10-23 Boss 定，不改变上面默认归属）：
+    exec_codebuddy_mimo / acp:codebuddy-mimo（模型 mimo-v2.6-pro 钉住 + --effort max --autocompact auto），
+    vendor=xiaomi；exec_codebuddy_hy4 / acp:codebuddy-hy4（模型 hy4-preview 钉住 + --effort max --autocompact auto），
+    vendor=hunyuan；两条备选通道 ACP 命令同样含 --permission-mode bypassPermissions
 
   ## 角色表（闭合集合，禁止自创）
   中文显示名 **只能** 用下表；派发、会话 title、战报、对 Boss 叙述一律禁自创武将名。
@@ -311,6 +328,9 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   ## 角色分配规则
   - Executor 从"可用"子 agent 中选
   - Reviewer 从"可用"且实际 vendor ≠ Executor 实际 vendor 的子 agent 中选
+  - **默认通道（2026-10-23 Boss 定）：关二爷默认 exec_codebuddy_ds（deepseek），
+    法正默认 exec_codebuddy_mm（minimax）**；两通道钉 --effort max --autocompact auto，
+    ACP 命令均含 --permission-mode bypassPermissions；换默认须 Boss 明令
   - **避免裁判运动员一身兼：Executor 与 Controller 大脑同模型时，优先换其他 vendor 的 Executor**
   - **vendor 自检（无代码级强制，靠你执行）：** 派发 Reviewer 前，在派发消息中显式写出
     "Executor vendor = X, Reviewer vendor = Y, X ≠ Y"（按实际后端），不成立则换 Reviewer
@@ -344,8 +364,8 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   - 会话名 = 稳定名 `<角色中文名>·<模型名>`（无关卡号、无简述）：同一 Executor 连跑多关
     **必须** 同名续发，**禁止** 每关新会话；换模型/换角色用新名；并行关卡追加 `-P2` / `-P3`
   - 通道消歧三段式：同一模型经多条通道接入时改用 `<角色中文名>·<通道>·<模型缩写>`
-    （Boss 2026-09-29 明令实例：CodeBuddy 通道的 DeepSeek 一律 `法正·codebuddy·DS`，
-    禁再用 `法正·DeepSeek-v4.1`）；换通道视同换模型，用新名新建会话
+    （2026-10-23 当前映射实例：CodeBuddy DS 通道 = `关二爷·codebuddy·DS`（executor 默认通道），
+    CodeBuddy MM 通道 = `法正·codebuddy·MM`（reviewer 默认通道））；换通道视同换模型，用新名新建会话
   - 续发 **禁止** 传 model / harness / file_ids / cost_budget（仅创建时有效，核心硬报错）
   - 子会话有 turn 在跑时续发被拒（忙碌保护）：等 inbox 完成通知再续派，不要轮询
   - 清零上下文：先 `sys_session_close`，再同名重派（tombstone 后同名可重建）
@@ -542,6 +562,67 @@ def build(det: dict, brain: str | None, no_codex: bool = False) -> tuple[dict[st
             "    harness: acp:codebuddy",
             WORKER_PROMPT,
         )
+        # CodeBuddy 多通道钉模型（2026-10-23 Boss 定）：ACP 侧 name 经 omnigent slug 化
+        # 为 acp:codebuddy-ds / acp:codebuddy-mm；模型与 --effort max --autocompact auto
+        # 在 ACP 命令里钉住（见 ACP_AGENT_ENTRIES），--permission-mode bypassPermissions 保留
+        workers.append(
+            (
+                "exec_codebuddy_ds",
+                "acp:codebuddy-ds",
+                "deepseek",
+                "CodeBuddy DS 通道，deepseek-v4.1-flash 钉住（--effort max --autocompact auto），关二爷默认通道",
+            )
+        )
+        files["agents/exec_codebuddy_ds/config.yaml"] = worker_yaml(
+            "exec_codebuddy_ds",
+            "deepseek 执行体（CodeBuddy CLI 多通道 DS：acp:codebuddy-ds，模型 deepseek-v4.1-flash 钉住，--effort max --autocompact auto，含 --permission-mode bypassPermissions）。关二爷默认通道；可担任 executor/reviewer。",
+            "    harness: acp:codebuddy-ds",
+            WORKER_PROMPT,
+        )
+        workers.append(
+            (
+                "exec_codebuddy_mm",
+                "acp:codebuddy-mm",
+                "minimax",
+                "CodeBuddy MM 通道，minimax-m3.1-flash 钉住（--effort max --autocompact auto），法正默认通道",
+            )
+        )
+        files["agents/exec_codebuddy_mm/config.yaml"] = worker_yaml(
+            "exec_codebuddy_mm",
+            "minimax 执行体（CodeBuddy CLI 多通道 MM：acp:codebuddy-mm，模型 minimax-m3.1-flash 钉住，--effort max --autocompact auto，含 --permission-mode bypassPermissions）。法正默认通道；可担任 executor/reviewer。",
+            "    harness: acp:codebuddy-mm",
+            WORKER_PROMPT,
+        )
+        # CodeBuddy 备选通道（2026-10-23 Boss 定）：MiMo（小米）/ HY4（腾讯混元）钉模型，
+        # 备选可用，不改变关二爷/法正默认通道归属
+        workers.append(
+            (
+                "exec_codebuddy_mimo",
+                "acp:codebuddy-mimo",
+                "xiaomi",
+                "CodeBuddy MiMo 通道，mimo-v2.6-pro 钉住（--effort max --autocompact auto），备选可用",
+            )
+        )
+        files["agents/exec_codebuddy_mimo/config.yaml"] = worker_yaml(
+            "exec_codebuddy_mimo",
+            "xiaomi 执行体（CodeBuddy CLI 多通道 MiMo：acp:codebuddy-mimo，模型 mimo-v2.6-pro 钉住，--effort max --autocompact auto，含 --permission-mode bypassPermissions）。备选可用通道；可担任 executor/reviewer。",
+            "    harness: acp:codebuddy-mimo",
+            WORKER_PROMPT,
+        )
+        workers.append(
+            (
+                "exec_codebuddy_hy4",
+                "acp:codebuddy-hy4",
+                "hunyuan",
+                "CodeBuddy HY4 通道，hy4-preview 钉住（--effort max --autocompact auto），备选可用",
+            )
+        )
+        files["agents/exec_codebuddy_hy4/config.yaml"] = worker_yaml(
+            "exec_codebuddy_hy4",
+            "hunyuan 执行体（CodeBuddy CLI 多通道 HY4：acp:codebuddy-hy4，模型 hy4-preview 钉住，--effort max --autocompact auto，含 --permission-mode bypassPermissions）。备选可用通道；可担任 executor/reviewer。",
+            "    harness: acp:codebuddy-hy4",
+            WORKER_PROMPT,
+        )
 
     # Hermes 工人（火山方舟 Agent Plan，GLM 5.2；显示名 hermes-GLM5.2（huoshan））
     # 嗅探方舟 plan 块默认模型（providers.volcengine-agent-plan.model），不要求 hermes
@@ -696,7 +777,15 @@ tools:
 
 ACP_AGENT_ENTRIES = [
     ("grok agent stdio", "  - {name: Grok Build, command: grok agent stdio}"),
-    ("codebuddy --acp", "  - {name: CodeBuddy, command: codebuddy --acp}"),
+    ("codebuddy --acp", "  - {name: CodeBuddy, command: codebuddy --acp --permission-mode bypassPermissions}"),
+    # 多通道钉模型（2026-10-23 Boss 定）：name 经 omnigent slug 化为 acp:codebuddy-ds / acp:codebuddy-mm；
+    # --permission-mode bypassPermissions 保留（治审批弹窗卡看门狗），--effort max --autocompact auto 钉死
+    ("name: CodeBuddy DS", "  - {name: CodeBuddy DS, command: codebuddy --acp --permission-mode bypassPermissions --model deepseek-v4.1-flash --effort max --autocompact auto}"),
+    ("name: CodeBuddy MM", "  - {name: CodeBuddy MM, command: codebuddy --acp --permission-mode bypassPermissions --model minimax-m3.1-flash --effort max --autocompact auto}"),
+    # 备选可用通道（2026-10-23 Boss 定）：MiMo（小米 mimo-v2.6-pro）/ HY4（腾讯混元 hy4-preview）；
+    # 钉法与 DS/MM 完全一致（slug 化 acp:codebuddy-mimo / acp:codebuddy-hy4）
+    ("name: CodeBuddy MiMo", "  - {name: CodeBuddy MiMo, command: codebuddy --acp --permission-mode bypassPermissions --model mimo-v2.6-pro --effort max --autocompact auto}"),
+    ("name: CodeBuddy HY4", "  - {name: CodeBuddy HY4, command: codebuddy --acp --permission-mode bypassPermissions --model hy4-preview --effort max --autocompact auto}"),
 ]
 
 
