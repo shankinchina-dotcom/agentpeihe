@@ -62,8 +62,9 @@ PI_PROVIDERS = [
 
 BRAIN_PRIORITY = ["codex", "claude-sdk", "pi"]
 
-# 池子默认 pin 的 Codex 模型（Boss 指定 2026-07-22；None = 跟 codex CLI 默认走）
-CODEX_WORKER_MODEL = "gpt-5.6-sol"
+# 池子默认 pin 的 Codex 模型（None = 跟 codex CLI 默认走）
+# 2026-10-23 实测：ChatGPT 账号 headless 仅 gpt-5.6-luna 可用（gpt-5.4-mini/gpt-5.6-sol 均被服务端拒绝）
+CODEX_WORKER_MODEL = "gpt-5.6-luna"
 
 # compact 阈值（tokens）：烘进 controller prompt，调环境变量后重跑生成器生效
 COMPACT_THRESHOLD_TOKENS = int(os.environ.get("AGENTPEIHE_COMPACT_THRESHOLD_TOKENS", "80000"))
@@ -736,12 +737,18 @@ def build(det: dict, brain: str | None, no_codex: bool = False) -> tuple[dict[st
             f"\n  model: {model}\n  auth:\n    type: provider\n    name: {provider}"
         )
 
+    # codex 大脑也要在 executor 顶层钉 model：omnigent codex harness 默认 gpt-5.4-mini，
+    # ChatGPT 账号不支持会在会话启动即 400；钉住即走 HARNESS_CODEX_MODEL
+    codex_model_top = ""
+    if brain == "codex" and CODEX_WORKER_MODEL:
+        codex_model_top = f"\n  model: {CODEX_WORKER_MODEL}"
+
     files["config.yaml"] = f"""spec_version: 1
 name: controller
 description: 三国总控（诸葛丞相）。本文件由 gen_controller_bundle.py 生成（{datetime.date.today().isoformat()}），请勿手改——重新跑生成器即可。
 
 executor:
-  type: omnigent{pi_model_top}
+  type: omnigent{pi_model_top}{codex_model_top}
   config:
 {brain_cfg}
     # 大脑：{brain_note}
