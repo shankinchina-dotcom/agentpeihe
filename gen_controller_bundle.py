@@ -36,6 +36,9 @@
     （acp:codebuddy-hy4，钉 hy4-preview）两条备选可用通道，同样钉
     --effort max --autocompact auto + --permission-mode bypassPermissions，不改变默认归属
   - cooldown: 注册表 Scores 表 cooldown-until 未到期 → 该模型不出现在 tools
+  - prompt 尺寸硬门（坑 35 / 部署文档 §4.3 预算）：controller prompt 实际 UTF-8 字节
+    ≤ 12288（12KB）；build() 生成 config.yaml 后、写盘前校验，超限报错（含实际字节数）拒绝生成；
+    dry-run 另对超过 95%（11673B）打印预警，提示先消重再扩写
 """
 from __future__ import annotations
 
@@ -66,8 +69,17 @@ BRAIN_PRIORITY = ["codex", "claude-sdk", "pi"]
 # 2026-10-23 实测：ChatGPT 账号 headless 仅 gpt-5.6-luna 可用（gpt-5.4-mini/gpt-5.6-sol 均被服务端拒绝）
 CODEX_WORKER_MODEL = "gpt-5.6-luna"
 
+# kimi 大脑 pin 的模型别名（~/.kimi-code/config.toml 的 [models] 键；None = 跟 CLI default_model 走）
+# 2026-10-26 Boss：丞相大脑上 K3.1 Pro（1M 上下文，thinking-only low/high/max）
+KIMI_BRAIN_MODEL = "kimi-code/k3.1-pro"
+
 # compact 阈值（tokens）：烘进 controller prompt，调环境变量后重跑生成器生效
 COMPACT_THRESHOLD_TOKENS = int(os.environ.get("AGENTPEIHE_COMPACT_THRESHOLD_TOKENS", "80000"))
+
+# controller prompt 尺寸硬门（UTF-8 字节；坑 35 / 部署文档 §4.3 预算 ≤12KB）：
+# build() 生成 config.yaml 后、写盘前校验 prompt 块实际字节数，超限拒绝生成
+PROMPT_SIZE_LIMIT_BYTES = 12 * 1024
+PROMPT_WARNING_THRESHOLD_BYTES = int(PROMPT_SIZE_LIMIT_BYTES * 0.95)
 
 # 本脚本所在目录绝对路径：烘进 controller prompt，供派关时调 compile_gate_prompt.py / gen_repo_map.py
 BUNDLE_DIR = Path(__file__).resolve().parent
@@ -302,15 +314,12 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   - GLM 5.2：exec_zhipu / hermes-native（方舟 Agent Plan，钉 -m glm-5-2-260617 --provider volcengine-agent-plan），vendor=zhipu
   - Kimi：只走 kimi-native（exec_moonshot / 网页手工），禁进 Claude 壳；官方 Claude 可选非默认；Codex 丞相/工人独立
   - CodeBuddy：exec_codebuddy / acp:codebuddy（ACP），vendor 按默认模型实际后端（{codebuddy_vendor}）
-  - CodeBuddy 多通道钉模型（2026-10-23 Boss 定）：
-    exec_codebuddy_ds / acp:codebuddy-ds（模型 deepseek-v4.1-flash 钉住 + --effort max --autocompact auto），
-    vendor=deepseek，**关二爷默认通道**；
-    exec_codebuddy_mm / acp:codebuddy-mm（模型 minimax-m3.1-flash 钉住 + --effort max --autocompact auto），
-    vendor=minimax，**法正默认通道**；两条通道 ACP 命令均含 --permission-mode bypassPermissions；
-    备选可用（2026-10-23 Boss 定，不改变上面默认归属）：
-    exec_codebuddy_mimo / acp:codebuddy-mimo（模型 mimo-v2.6-pro 钉住 + --effort max --autocompact auto），
-    vendor=xiaomi；exec_codebuddy_hy4 / acp:codebuddy-hy4（模型 hy4-preview 钉住 + --effort max --autocompact auto），
-    vendor=hunyuan；两条备选通道 ACP 命令同样含 --permission-mode bypassPermissions
+  - CodeBuddy 多通道钉模型（2026-10-23 Boss 定；四通道统一钉 --effort max --autocompact
+    auto + --permission-mode bypassPermissions）：exec_codebuddy_ds / acp:codebuddy-ds
+    （deepseek-v4.1-flash，vendor=deepseek，**关二爷默认**）；exec_codebuddy_mm / acp:codebuddy-mm
+    （minimax-m3.1-flash，vendor=minimax，**法正默认**）；备选（不改默认归属）：exec_codebuddy_mimo
+    / acp:codebuddy-mimo（mimo-v2.6-pro，vendor=xiaomi）；exec_codebuddy_hy4 / acp:codebuddy-hy4
+    （hy4-preview，vendor=hunyuan）
 
   ## 角色表（闭合集合，禁止自创）
   中文显示名 **只能** 用下表；派发、会话 title、战报、对 Boss 叙述一律禁自创武将名。
@@ -330,8 +339,7 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
   - Executor 从"可用"子 agent 中选
   - Reviewer 从"可用"且实际 vendor ≠ Executor 实际 vendor 的子 agent 中选
   - **默认通道（2026-10-23 Boss 定）：关二爷默认 exec_codebuddy_ds（deepseek），
-    法正默认 exec_codebuddy_mm（minimax）**；两通道钉 --effort max --autocompact auto，
-    ACP 命令均含 --permission-mode bypassPermissions；换默认须 Boss 明令
+    法正默认 exec_codebuddy_mm（minimax）**；换默认须 Boss 明令
   - **避免裁判运动员一身兼：Executor 与 Controller 大脑同模型时，优先换其他 vendor 的 Executor**
   - **vendor 自检（无代码级强制，靠你执行）：** 派发 Reviewer 前，在派发消息中显式写出
     "Executor vendor = X, Reviewer vendor = Y, X ≠ Y"（按实际后端），不成立则换 Reviewer
@@ -413,13 +421,33 @@ CONTROLLER_PROMPT_TMPL = """  你是 agentpeihe 协作框架中的 **Controller�
     3. 项目红线和验收标准？（禁做事项、怎么算完成）
   - **产出《项目章程》**：关卡序列草案 + 角色安排 + 红线 + 验收标准，Boss 确认后才开第一关；
     之后所有关卡引用章程作为上下文锚点
-  - **会话命名（Web UI 子代理图谱直接显示）**：稳定名 `<角色中文名>·<模型名>`，机制见「会话池」；
-    禁英文 slug、禁只写角色不写模型、**禁** 角色表以外中文名（赵云·… 等一律不合格）；
-    多通道消歧用 `<角色中文名>·<通道>·<模型缩写>` 三段式（见「会话池」）
+  - **会话命名**：严格按「会话池」与角色表执行，不另造规则
   - **派发即公布阵容**：每条派发消息必须写明 `角色=模型（agent id）`，
     例：`关二爷=DeepSeek（exec_deepseek）、法正=Grok（exec_xai）`；自创角色名 = 派发不合格，重写后再发
   - **任务/单元完成必出战报**：向 Boss 输出阵容战报表——
     `| 角色 | 实际模型 | 关卡 | 结果 | 证据/备注 |`，每关一行；角色列只能填 关二爷/法正/马良/诸葛丞相（及主公若需要）"""
+
+
+def prompt_block_bytes(config_yaml: str) -> int:
+    """config.yaml 中 prompt: | 块内容的 UTF-8 字节数（CHANGELOG/部署文档的尺寸口径）。"""
+    lines = config_yaml.splitlines()
+    start = next(i for i, l in enumerate(lines) if l.startswith("prompt: |"))
+    block = []
+    for line in lines[start + 1:]:
+        if line.strip() and not line.startswith((" ", "\t")):
+            break
+        block.append(line)
+    return len("\n".join(block).encode("utf-8"))
+
+
+def prompt_size_warning(config_yaml: str) -> str | None:
+    size = prompt_block_bytes(config_yaml)
+    if size <= PROMPT_WARNING_THRESHOLD_BYTES:
+        return None
+    return (
+        f"警告：controller prompt {size}B 超过 95% 预警线 "
+        f"{PROMPT_WARNING_THRESHOLD_BYTES}B（硬上限 {PROMPT_SIZE_LIMIT_BYTES}B），请先消重再扩写。"
+    )
 
 
 def build(det: dict, brain: str | None, no_codex: bool = False) -> tuple[dict[str, str], list[str], str, list[str]]:
@@ -707,7 +735,7 @@ def build(det: dict, brain: str | None, no_codex: bool = False) -> tuple[dict[st
         "claude-sdk": "真 Claude（claude-sdk，vendor=anthropic）",
         "codex": "Codex（openai，headless SDK 形态）",
         "pi": f"API 模型（pi harness，{det['pi_providers'][0][1] if det['pi_providers'] else '?'}）",
-        "kimi": "Kimi K3（kimi-native，moonshot，默认 --yolo）",
+        "kimi": f"Kimi（kimi-native，moonshot，默认 --yolo，model={KIMI_BRAIN_MODEL or 'CLI 默认'}）",
     }[brain]
 
     pool_rows = "\n".join(
@@ -743,12 +771,18 @@ def build(det: dict, brain: str | None, no_codex: bool = False) -> tuple[dict[st
     if brain == "codex" and CODEX_WORKER_MODEL:
         codex_model_top = f"\n  model: {CODEX_WORKER_MODEL}"
 
+    # kimi-native 大脑同理钉 executor 顶层 model：launch 时注入 `-m <别名>`
+    # （runner/app.py _auto_create_kimi_terminal），不碰用户 CLI 全局 default_model
+    kimi_model_top = ""
+    if brain == "kimi" and KIMI_BRAIN_MODEL:
+        kimi_model_top = f"\n  model: {KIMI_BRAIN_MODEL}"
+
     files["config.yaml"] = f"""spec_version: 1
 name: controller
 description: 三国总控（诸葛丞相）。本文件由 gen_controller_bundle.py 生成（{datetime.date.today().isoformat()}），请勿手改——重新跑生成器即可。
 
 executor:
-  type: omnigent{pi_model_top}{codex_model_top}
+  type: omnigent{pi_model_top}{codex_model_top}{kimi_model_top}
   config:
 {brain_cfg}
     # 大脑：{brain_note}
@@ -779,6 +813,13 @@ tools:
   agents:
 {chr(10).join(f'    - {n}' for n, _, _, _ in workers)}
 """
+    prompt_bytes = prompt_block_bytes(files["config.yaml"])
+    if prompt_bytes > PROMPT_SIZE_LIMIT_BYTES:
+        sys.exit(
+            f"错误：controller prompt 实际 {prompt_bytes}B（UTF-8）超硬上限 "
+            f"{PROMPT_SIZE_LIMIT_BYTES}B（12KB，坑 35 / 部署文档 §4.3），已拒绝生成。"
+            "请精简 CONTROLLER_PROMPT_TMPL / 模型池备注后重跑生成器。"
+        )
     return files, [n for n, _, _, _ in workers], brain, pool_notes
 
 
@@ -872,6 +913,10 @@ def main() -> None:
 
     files, workers, brain, notes = build(det, args.brain, no_codex=args.no_codex)
     print(f"\n== 生成计划 ==\n大脑: {brain}\n工人: {workers}")
+    print(f"controller prompt: {prompt_block_bytes(files['config.yaml'])}B / 上限 {PROMPT_SIZE_LIMIT_BYTES}B（坑 35 预算）")
+    warning = prompt_size_warning(files["config.yaml"])
+    if warning:
+        print(warning)
     if notes:
         print("备注:")
         for n in notes:

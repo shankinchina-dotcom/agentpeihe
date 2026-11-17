@@ -11,8 +11,9 @@
 1. 所有工作都在 **WSL2（Ubuntu）里**进行，除非特别标注"PowerShell"。不要在 Windows 原生环境装 omnigent（跑不了 native CLI）。
 2. 仓库/代码必须放在 **Linux 文件系统**（`~/...`），**禁止** `/mnt/c/...`（跨文件系统权限和性能都是坑）。
 3. **代理是头号坑**：WSL2 里的 `127.0.0.1` ≠ Windows 的 `127.0.0.1`。第 2 步专门处理，别跳。
-4. 本文每一步都有「预期输出」和「失败分支」。照做即可，不用理解原理；想知道为什么，读 `agentpeihe/docs/PITFALLS.md`。
-5. 凭据各归各：不要把 Mac 上的任何登录态/凭据复制过来，每个 CLI 在本机独立登录。
+4. **网络模式（先 `winver`）**：**Windows 10 一律 NAT**——代理用**网关 IP**，别折腾 `networkingMode=mirrored`。**mirrored 仅 Windows 11 22H2+**；Win10 写了 `.wslconfig` 也不生效。
+5. 本文每一步都有「预期输出」和「失败分支」。照做即可，不用理解原理；想知道为什么，读 `agentpeihe/docs/PITFALLS.md`。Win10 全流程现场总册：`agentpeihe/docs/WIN10_PITFALLS_SOLUTIONS.md`。
+6. 凭据各归各：不要把 Mac 上的任何登录态/凭据复制过来，每个 CLI 在本机独立登录。
 
 ---
 
@@ -32,7 +33,26 @@ wsl -l -v
 
 ## 2. 网络与代理（最容易死的一步，先干这个）
 
-### 2.1 推荐：mirrored 网络模式（WSL 共享 Windows 的 localhost）
+> **默认路径按 OS 分流**：
+> - **Windows 10**：**直接走 NAT**（本节 2.1A）。不要写 `networkingMode=mirrored`——不支持，白耗时间。
+> - **Windows 11 22H2+**：可试 mirrored（2.1B）；失败再退回 NAT。
+>
+> 相关：`PITFALLS.md` 坑 12–13、19–20；Win10 现场顺序与服务/防火墙细则见 `WIN10_PITFALLS_SOLUTIONS.md`（W03–W06）。
+
+### 2.1A Windows 10（及一切仍是 NAT 的环境）：网关 IP + 允许局域网
+
+WSL 内：
+
+```bash
+ip route show default | awk '{print $3; exit}'   # 记为 <网关IP>，如 172.30.176.1
+```
+
+- Windows 代理软件必须开 **「允许局域网连接 / Allow LAN」**（Clash Verge 等）。
+- 代理地址写 `http://<网关IP>:<端口>`，**不要**写 `http://127.0.0.1:<端口>`。
+- **预期**：`nc -zv -w 3 <网关IP> <端口>` 通。
+- **失败分支**：TCP 通但 curl 超时 → 多半是 allow-lan 未进 runtime；`0.0.0.0` 已监听仍超时 → 防火墙。见下方 **2.4**。
+
+### 2.1B 可选（仅 Win11 22H2+）：mirrored 网络模式
 
 在 **Windows 用户目录**（`C:\Users\<你>\`）新建/编辑 `.wslconfig`：
 
@@ -43,27 +63,58 @@ networkingMode=mirrored
 
 PowerShell 执行 `wsl --shutdown`，重开 Ubuntu。
 
-- **预期**：WSL 里 `curl -s http://127.0.0.1:<Windows代理端口> ` 能通（代理在 Windows 上跑，WSL 也能用 127.0.0.1 访问它）。
-- **失败分支**：mirrored 模式异常（老 Windows 版本不支持）→ 退回 NAT 模式：删掉 `.wslconfig` 那段，WSL 里用 `ip route show default | awk '{print $3}'` 取宿主机 IP 当代理地址，且 Windows 代理软件必须开"允许局域网连接"。
+- **预期**：WSL 里可用 `http://127.0.0.1:<端口>` 访问 Windows 上的代理。
+- **失败分支**（含 Win10、旧 Win11、mirrored 异常）→ **删掉** `.wslconfig` 里 networkingMode 段，`wsl --shutdown` 后按 **2.1A NAT** 处理。
 
 ### 2.2 确认代理端口（Windows 侧）
 
-问主公：Windows 上跑的是什么代理软件（Clash Verge / v2rayN / 其他），端口多少。把它记为 `<PROXY>`，形如 `http://127.0.0.1:7890`。
+问主公：Windows 上跑的是什么代理软件（Clash Verge / v2rayN / 其他），端口多少（常见 mixed 7897）。记为 `<端口>`。
+
+- **NAT（2.1A）**：`<PROXY>=http://<网关IP>:<端口>`
+- **mirrored 已生效（2.1B）**：`<PROXY>=http://127.0.0.1:<端口>`
 
 ### 2.3 WSL 内配置代理环境变量（写进 `~/.bashrc`）
 
+**NAT（Win10 默认）——探测网关，不是 127.0.0.1：**
+
 ```bash
 # 仅当代理端口活着才挂代理（代理软件关了不影响国内直连）
-if nc -z 127.0.0.1 <端口> 2>/dev/null; then
-  export HTTPS_PROXY="<PROXY>" HTTP_PROXY="<PROXY>"
+GW=$(ip route show default | awk '{print $3; exit}')
+PORT=<端口>   # 与 Windows 代理一致，如 7897
+if [ -n "$GW" ] && nc -z -w 2 "$GW" "$PORT" 2>/dev/null; then
+  export HTTPS_PROXY="http://${GW}:${PORT}" HTTP_PROXY="http://${GW}:${PORT}"
   # 国内 API 直连白名单：不配代理的厂商都列进来
   export NO_PROXY="api.deepseek.com,api.moonshot.cn,api.moonshot.ai,localhost,127.0.0.1,.local"
   export no_proxy="$NO_PROXY"
 fi
 ```
 
+**仅当 Win11 mirrored 已验证可用时**，才把探测目标改成 `127.0.0.1` / `http://127.0.0.1:$PORT`（不要在 Win10 上抄这一段）。
+
 - **验证**（三活）：`curl -s -o /dev/null -w "%{http_code}\n" https://api.deepseek.com/v1/models`（直连，401 即通）、`curl -s -o /dev/null -w "%{http_code}\n" https://api.x.ai/v1/models`（走代理，401/403 即通）、`curl -s -o /dev/null -w "%{http_code}\n" https://api.moonshot.cn/v1/models`（直连，401 即通）。
-- **失败分支**：国外域名不通 → 检查 mirrored/NAT 设置与代理软件"允许局域网连接"；国内域名不通 → 检查 NO_PROXY 是否生效（`env | grep -i proxy`）。
+- **失败分支**：国外域名不通 → 检查 NAT/mirrored 与代理「允许局域网」；国内域名不通 → 检查 NO_PROXY（`env | grep -i proxy`）。
+
+### 2.4 防火墙 / Clash 服务发现（代理仍不通时）
+
+不要在 HANDOFF 里手抄长规则；按下列指针处理：
+
+| 症状 | 去哪 | 要点 |
+|------|------|------|
+| 磁盘 yaml `allow-lan: true`，runtime 仍 `127.0.0.1` | `PITFALLS.md` **坑 19**；总册 W05 | 三层配置都改；热修命名管道；**先 `Get-Service *clash*` 再 `Restart-Service <Name>`**（示例名 `clash_verge_service`，以本机为准） |
+| 已是 `0.0.0.0:<端口>`，WSL `nc` 仍超时 | `PITFALLS.md` **坑 20**；总册 W06 | 管理员 pwsh：先取 WSL adapter alias，再筛选**唯一的已连接 IPv4 接口**并绑定 `-InterfaceAlias`；0 个或多个候选都停，禁止静默取第一个或用 `RemoteIP=Any` 兜底 |
+
+### 2.5 自检脚本（仓库内）
+
+代理与 WSL 环境配完后，在 WSL 跑（路径相对本仓库 `agentpeihe/scripts/`）：
+
+```bash
+# 若已 clone 到 ~/agentcenter：
+bash ~/agentcenter/agentpeihe/scripts/check_win10_wsl.sh
+# 若当前就在仓库根：
+# bash agentpeihe/scripts/check_win10_wsl.sh
+```
+
+脚本覆盖网关、代理 TCP/HTTP、国内直连、PATH、登录、Claude 壳、现有 bundle 与 UI；不创建或审计 Windows 防火墙规则。失败时对照 2.1A / 2.4 与 PITFALLS 坑 12–13、19–20。
 
 ---
 
@@ -103,12 +154,35 @@ npm install -g @anthropic-ai/claude-code @openai/codex @earendil-works/pi-coding
 
 ```bash
 claude        # 走它的登录流程；用 CC Switch 接国产模型的，这里配各家的 BASE_URL/key
-kimi login    # 如装了 kimi
+kimi login    # 如装了 kimi（OAuth；预期 Logged in to managed:kimi-code）
+# 嵌入 TUI 冷启动的「Send /login」是进程内 session，不是 OAuth——见 PITFALLS 坑 24
+# 网页「继续任务」无反应 / 「输入框未就绪」：K3 盒线 │ > 也算出就绪，见坑 24
+# 法正 Hermes「未接收粘贴」先看输入框 [Pasted text #N]，见坑 25
 # codex 用 `codex login`
 ```
 
 - **注意 CC Switch 现实**：`claude` CLI 背后是哪家模型，看 `~/.claude/settings.json` 的 `ANTHROPIC_BASE_URL`——vendor 判定按实际后端，不按 CLI 名字（生成器会自动嗅探）。
 - **通道隔离（2026-07-22 定版，务必遵守）**：Kimi 只走 `kimi-native`（omnigent 默认 `--yolo`，自动派活和手工都可用）；**禁止** Kimi 经 CC Switch 套 claude 壳。DeepSeek 才走 claude 壳（CC Switch 指 `api.deepseek.com/anthropic`）。生成器会嗅探 `~/.claude/settings.json` 自动按此配池。
+- **DeepSeek 默认模型与上下文（2026-08-10）**：主路径是 Claude 壳 `exec_deepseek`，**不是** pi。本机 `~/.claude/settings.json` 约定：
+  - **默认模型**：`deepseek-v4-flash-vision-exp`（2026-09-09 Boss 定 vision-exp，支持图片输入）
+  - **默认上下文 1M**：主模型 id 必须带后缀 → `ANTHROPIC_MODEL=deepseek-v4-flash-vision-exp[1M]`
+    只写 `deepseek-v4-flash-vision-exp` 时 TUI 常显示 **200k Ctx**（见 PITFALLS 坑 21）
+  - Haiku/Fable/Sonnet/Opus 别名：全部 `deepseek-v4-flash-vision-exp[1M]`；pi 直连备选用无后缀稳定版 `deepseek-v4-flash`
+  - 改 settings 后 **新开会话** 才生效
+
+  ```json
+  {
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+      "ANTHROPIC_AUTH_TOKEN": "<key>",
+      "ANTHROPIC_MODEL": "deepseek-v4-flash-vision-exp[1M]",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash-vision-exp[1M]",
+      "ANTHROPIC_DEFAULT_FABLE_MODEL": "deepseek-v4-flash-vision-exp[1M]",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-flash-vision-exp[1M]",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL": "deepseek-v4-flash-vision-exp[1M]"
+    }
+  }
+  ```
 
 ## 6. 配置 provider（有 API key 的模型才配；订阅 CLI 不用）
 
@@ -122,6 +196,7 @@ providers:
       base_url: https://api.deepseek.com/v1
       api_key: $DEEPSEEK_API_KEY
       models:
+        # pi/OpenAI 兼容路径用无 [1M] 后缀的 id；Claude 壳主路径见 §5 settings
         default: deepseek-v4-flash
 ```
 

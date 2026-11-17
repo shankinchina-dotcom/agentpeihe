@@ -3,6 +3,7 @@
 
 覆盖：逐字节确定性、零动态字段（日期/uuid）、三段式结构与顺序、
 executor/reviewer 固定头差异、产物指针校验与去重、占位行、
+preflight/看门狗/实证纪律文本、
 repo map 的 os.walk 回退与 git 双路径、默认输出幂等。
 """
 from __future__ import annotations
@@ -210,6 +211,36 @@ class CompileTest(FixtureMixin, unittest.TestCase):
         self.assertIn("# Repo Map", out)
         self.assertIn("由 gen_repo_map.py 生成", out)
         self.assertIsNone(DATE_RE.search(out))
+
+
+class PreflightDisciplineTest(FixtureMixin, unittest.TestCase):
+    """契约 preflight 纪律：initial 固定头含规则文本；followup 不重复；字段行为不变。"""
+
+    def test_executor_initial_contains_preflight_rules(self):
+        out = self._compile().stdout
+        self.assertIn("开工 Preflight", out)
+        self.assertIn("长任务看门狗", out)
+        self.assertIn("Allowed 是否覆盖测试/构建所锁定的一致性文件", out)
+
+    def test_reviewer_initial_contains_evidence_rule(self):
+        out = self._compile(role="reviewer").stdout
+        self.assertIn("实证核验", out)
+        self.assertIn("不接受只有叙事而无证据的汇报", out)
+
+    def test_followup_omits_fixed_discipline(self):
+        out = self._compile(mode="followup").stdout
+        self.assertNotIn("开工 Preflight", out)
+        self.assertNotIn("长任务看门狗", out)
+        self.assertNotIn("实证核验", out)
+        self.assertIn("Allowed: 读写 src/ 与 tests/", out)  # 契约字段不受影响
+
+    def test_preflight_rules_byte_deterministic(self):
+        a = self._compile().stdout
+        b = self._compile().stdout
+        self.assertEqual(a, b)
+        self.assertEqual(a.count("开工 Preflight"), 1)
+        self.assertEqual(a.count("长任务看门狗"), 1)
+        self.assertEqual(a.count("实证核验"), 0)  # 仅 reviewer 纪律含此条
 
 
 class StaticAssertTest(unittest.TestCase):

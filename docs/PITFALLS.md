@@ -287,7 +287,7 @@
 
 - **现象**：关二爷·DeepSeek（exec_deepseek / claude-native）派发失败，UI 报 `Native Claude terminal failed to start`（会话 labels: `native_terminal_start_failed`）；exec_xai（ACP）、exec_zhipu / exec_deepseek_hermes（hermes-native）同刻正常。runner 日志 `RuntimeError: tmux launch failed (rc=1): command too long`（本 runner 日志 09-08 19:42 首现，至 09-09 共 192 次）。
 - **根因**：claude-native 子会话终端启动时 `--append-system-prompt` 注入的是会话绑定 agent（=controller）的完整 prompt（runner/app.py:5909 按 session.agent_id 解 spec，子会话 create 时 agent_id=parent 的 controller）。controller prompt 10,718B 时启动命令包 ≈16.9KB；本机 tmux 实测单命令 16,000B 过、16,384B 拒（16KB imsg 硬顶）→ 发射被拒。prompt 随模型池备注逐日累涨，09-08 晚首撞线。
-- **怎么解决**：治标（已施）——生成器修剪 controller prompt 至 9,091B（模型池备注去重 + 各节冗词压缩，规则全保留），重跑生成器 + 带 `--agent` 重启（坑 33），仿真预试 15.7KB 命令 tmux 放行；治本（G64 已立项）——子会话终端改注入子 agent 自己的 spec prompt（exec_* 约 3.7KB），无 spec 可解时维持现状但对 >12KB 注入文本降级 WARN 而非硬失败。自检口诀：controller prompt 改动后，第一发 claude-native 派单必须盯 runner 日志 grep `command too long`。
+- **怎么解决**：治标（已施）——生成器修剪 controller prompt 至 9,091B（模型池备注去重 + 各节冗词压缩，规则全保留），重跑生成器 + 带 `--agent` 重启（坑 33），仿真预试 15.7KB 命令 tmux 放行；治本复核（2026-11-17）——当前源码已按 `sub_agent_name` 选择子 agent 自己的 spec，Claude 启动函数接收并注入子 prompt；新增父 prompt >12KiB、子 prompt 短文本的派发回归，`test_native_subagent_harness_resolution.py` 5 项全过。活体复派与 runner 日志验证仍属部署窗口验收。自检口诀：controller prompt 改动后，第一发 claude-native 派单必须盯 runner 日志 grep `command too long`。
 - **同类避免**：外部命令/消息通道都有隐形尺寸上限（tmux imsg 16KB、shell ARG_MAX、API context），凡「把大文本塞进启动命令」的链路，尺寸要进验收读数（字节数实测），不要只在功能层面验证「能跑」。
 
 ### 坑 36：harness 240s 空闲看门狗 × 长任务 = Executor 必须分段交棒；Controller 契约禁写「等完成才交棒」（2026-09-29）

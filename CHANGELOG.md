@@ -4,6 +4,12 @@
 
 ---
 
+## 2026-11-17
+
+- **fix · 双副本收敛 + 受控同步 + prompt 95% 预警**：flat→nested 逐条补丁补齐 10-23 CodeBuddy 多通道、Codex luna 与 10-26 K3.1 Pro WIP（原样保留，未提交/未部署）；nested 新版 Win10 HANDOFF、三份 Win10 资料与 WSL 自检脚本回灌 flat，flat `.gitignore` 补到 nested。镜像清单扩展到生成器、公共测试、Windows 文档/脚本共 20 文件，配 3 份 CHANGELOG 共 **23 项 PASS**。新增同步脚本：默认只看 diff，`--apply` 写入，脏源/脏目标必须经授权 `--allow-dirty`，原子替换后自动复检；主仓 CI 做双仓检查与每日复查，flat CI 跑自身单测（未推送触发）。prompt 删除重复的会话命名与 ACP 参数措辞但保留规则本体，12KiB 硬门新增 11,673B 预警；默认 dry-run flat/nested = **11,606B/11,630B**，Kimi/no-codex nested = **11,518B**。flat/nested 单测各 **56 OK**，主仓护栏/同步测试 **18 OK**；G64 当前子 spec 行为补 **5 项**回归并做父 prompt 负向对照，活体复派留部署窗口。
+
+---
+
 ## 2026-10-23
 
 - **feat · CodeBuddy 多通道钉模型（ds/mm/mimo/hy4 四通道入池）**：Boss 下令落地——CodeBuddy 从「单通道跟全局默认」扩展为「多通道钉模型」池。`~/.omnigent/config.yaml` 的 acp.agents 多 name 条目（CodeBuddy DS / CodeBuddy MM / CodeBuddy MiMo / CodeBuddy HY4，name 自动 slug 化为 harness id），acp command 均钉 `--permission-mode bypassPermissions --effort max --autocompact auto`（最高思考档 + 跟随模型完整窗口的最高上下文）：`exec_codebuddy_ds` / `acp:codebuddy-ds` 钉 deepseek-v4.1-flash（vendor=deepseek，**关二爷默认通道**）；`exec_codebuddy_mm` / `acp:codebuddy-mm` 钉 minimax-m3.1-flash（vendor=minimax，**法正默认通道**）；`exec_codebuddy_mimo` / `acp:codebuddy-mimo` 钉 mimo-v2.6-pro（vendor=xiaomi）、`exec_codebuddy_hy4` / `acp:codebuddy-hy4` 钉 hy4-preview（vendor=hunyuan），两条备选可用、不改变默认归属。原 `exec_codebuddy` / `acp:codebuddy`（跟 CLI 全局默认）保留为手工位。生成器同步：ACP_AGENT_ENTRIES 四新条目 + build() 四个工人注册 + CONTROLLER_PROMPT_TMPL（通道隔离段、角色分配默认——关二爷默认 DS / 法正默认 MM，换默认须 Boss 明令；会话池三段式示例从旧「法正·codebuddy·DS」更新为「关二爷·codebuddy·DS / 法正·codebuddy·MM」）。已验证：CLI 级双开冒烟 + omnigent 端到端派发冒烟均 PASS（进程 argv 与钉定一致、自报模型正确、并发共享 `~/.codebuddy` 无冲突）。落点：生成器 + 部署文档通道隔离表 CodeBuddy 两行 + §4.3.2 池清单 + SKILL.md Session naming 条 + docs/PROMPT_COMPILER_SESSION_POOL.md 会话池节。
@@ -158,9 +164,3 @@
 - **docs · 双机部署指南 + Windows 交接文档（G6）**：自包含 WSL2 协议（mirrored 网络/代理三活/8 项验收）
 - **docs · PITFALLS.md 初版**：10 个实测坑（agent 注册/显示/headless 审批死锁/pi schema/runner 凭证/ CC Switch 换皮/代理混用）
 - **chore · Monorepo 成型**：agentcenter = omnigent-zh-cn + ClaudeTeam + agentpeihe（subtree 合并，独立维护不跟上游）
-
-- **feat · Grok 4.6 → 4.7（xhigh effort）**：`~/.grok/config.toml` 已是 `models.default = "grok-4.7"` + `default_reasoning_effort = "xhigh"`（grok CLI 1.0.41，stable 通道）。exec_xai（acp:grok-build = `grok agent stdio`）模型与 effort 均取 CLI 默认，壳侧零改动。仓库侧同步：生成器 PI_PROVIDERS pi 备选 `grok-4.7`（两仓）、omnigent onboarding 兜底 pin `xai: grok-4.7`（两仓）、部署文档 provider 示例 `default: grok-4.7`（agentpeihe 两仓 + ClaudeTeam 两份）。注册表 Grok 行补注（floating-alias 延续、分数不动）。重跑 + 带 `--agent` 重启（controller v32，池表 skip 注 pi:grok-4.7）。
-- **docs · Grok /model 写全局实证**：tmux 真实 TUI 实验——`/model grok-4.6` 同步改写 config.toml [models] default（机制与 CodeBuddy 一致：TUI 切换即改派单默认）；差异是 grok vendor 恒为 xai，池表无需重跑。部署文档 Grok 行补机制说明（两仓）。实验后 config 已恢复 grok-4.7 xhigh。
-- **fix · CodeBuddy 模型链路实证 + 池表回正（controller v33）**：实测三层机制——TUI `/model` 与 `config set -g model` 都写全局默认（ACP currentModelId 跟随，exec_codebuddy 派单模型即随之切换）；`--model` 启动参数只管当次进程；ACP `session/set_model` 只管当次会话。Boss 裁 exec_codebuddy「跟随 CLI 默认」：TUI 切模型后须重跑生成器 + 重启保持池表/vendor 一致（生成器 sniff 动态判定，零代码）；本次 Boss 切回 hy4-preview-f 后已重跑回正（v33，exec_codebuddy | tencent）。要钉死派单模型不受 TUI 影响，改 acp command 加 `--model <id>`。
-- **feat · CodeBuddy 默认模型切 deepseek-v4.1-flash（vendor tencent→deepseek）**：`codebuddy config set -g model deepseek-v4.1-flash`（实测 `config set -g model` 对 ACP 生效，session/new currentModelId 回显 deepseek-v4.1-flash）——交互/ACP/派单工人全局默认统一切换。生成器配套升级：新增 `sniff_codebuddy_model`（读 `codebuddy config get model`）+ `codebuddy_vendor`（按默认模型实际后端判 vendor：deepseek/glm→zhipu/kimi→moonshot/minimax/hy→tencent），exec_codebuddy 的 vendor 与池表备注、通道隔离行动态化，不再写死 tencent。重跑 `--brain pi --no-codex` + 带 `--agent` 重启（controller v31）：池表 exec_codebuddy 行 = acp:codebuddy | deepseek | 默认 deepseek-v4.1-flash。烟测：AcpExecutor 直驱实回「收到」。注册表 DeepSeek V4.1 Flash 行补 CodeBuddy 通道路由。
-

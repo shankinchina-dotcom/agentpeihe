@@ -300,7 +300,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 
 1. **注册**：`omnigent-zh server --no-open --agent ~/.omnigent/agents/controller`（前台模式）。`server start` 后台模式不支持 `--agent`；`~/.omnigent/agents/` 下的文件**不会**被自动注册。
 2. **改后必重启**：server 拿的是启动时的 bundle 快照，改了 bundle 或重跑了生成器，必须重启 server 重新注册，否则跑的还是旧配置。
-3. **prompt 尺寸预算 ≤12KB**：claude-native 子会话启动命令把 controller prompt 整段注入 `--append-system-prompt`，prompt 超 ~10KB 即撞 tmux 16KB imsg 硬顶（坑 35）——改 prompt 后第一发 claude-native 派单盯 runner 日志 `command too long`。
+3. **prompt 尺寸硬门 ≤12KiB + 95% 预警**：claude-native 按会话解析后的 spec 把 instructions 注入 `--append-system-prompt`；子会话必须解析为自己的 sub-agent spec，不得回退成 controller 父 prompt。生成器在写盘前拒绝超过 12,288 UTF-8 字节的 controller prompt，超过 11,673B 打印消重预警（坑 35）——改 prompt 后第一发 claude-native 派单仍盯 runner 日志 `command too long`。
 
 **schema 硬约束（手改时必看，生成器已内置）：**
 - 大脑 harness 用非 native（claude-sdk / codex / pi），才能以本名进 Web UI"智能体"区（2026-08-04 起 kimi-native 大脑已完整可用，见 §4.3.2）
@@ -449,7 +449,7 @@ python3 gen_controller_bundle.py --brain codex   # 指定大脑（默认自动�
 **变更后三条纪律**
 
 1. 重跑生成器/改 bundle → 重启必带 `--agent`（坑 33），验证 `/v1/agents` version +1
-2. 改 controller prompt 后 → 第一发 claude-native 派单盯 runner 日志 `command too long`（坑 35）；G64 落地前 prompt 预算 ≤12KB
+2. 改 controller prompt 后 → dry-run 必须低于 12KiB 硬门并留意 95% 消重预警；第一发 claude-native 派单盯 runner 日志 `command too long`，并核对子会话注入的是自己的 spec prompt（坑 35）
 3. 模型池变动 → 重跑生成器，不手改 YAML
 
 **备用：API 应急注入（绕过 UI 给丞相发消息）**
@@ -539,7 +539,7 @@ curl -X POST http://127.0.0.1:6767/v1/sessions/<丞相 conv_id>/events \
 | 5 | pi 子 agent 报 "No API key found"：`model` 写在 `executor.config` 里被静默忽略 | `model` 必须在 `executor` 顶层；另需 `executor.auth: {type: provider, name: <config.yaml 里的 provider 名>}` 显式绑定 |
 | 6 | 修好 YAML 后 runner 仍报凭证无法解析 | host→runner 只转发凭证白名单（无 DEEPSEEK_API_KEY）：`export OMNIGENT_RUNNER_ENV_PASSTHROUGH=DEEPSEEK_API_KEY` 并重启 host+server |
 | 7 | `env_passthrough` 加了 API key 也没用 | 那是进子进程的白名单；gateway 路径 key 走 models.json（AUTH_COMMAND），与 env 透传无关 |
-| 8 | claude-native 子会话报 `Native Claude terminal failed to start`，runner 日志 `tmux launch failed (rc=1): command too long` | controller prompt 超 ~10KB 撞 tmux 16KB imsg 硬顶（坑 35）：修剪生成器 prompt + 重跑 + 带 `--agent` 重启；根修=子会话改注入子 agent 自己 spec prompt（G64） |
+| 8 | claude-native 子会话报 `Native Claude terminal failed to start`，runner 日志 `tmux launch failed (rc=1): command too long` | 注入文本撞 tmux 16KB imsg 硬顶（坑 35）：先核对实际注入的是子 agent 自己的 spec prompt（回归 `test_native_subagent_harness_resolution.py`），再修剪生成器 prompt + 重跑 + 带 `--agent` 重启；部署后活体复派验证 |
 
 ---
 

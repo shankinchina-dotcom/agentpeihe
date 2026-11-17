@@ -134,6 +134,12 @@ Expected report format:
 Next Owner after completion:
 ```
 
+Preflight (executor starts only after this passes):
+
+1. Confirm Allowed covers the consistency-locked files that tests/build depend on; if unsure, stop and return the contract to the controller for repair — do not proceed on ambiguity.
+2. Long tasks never wait synchronously inside one turn for a background job to finish; hand off in segments or poll explicitly between turns, leaving resumable intermediate artifacts.
+3. The reviewer verifies actual acceptance evidence (command output, test logs, artifact files); narrative alone never suffices.
+
 Only one gate may execute per approval. The executor stops after reporting and does not continue automatically.
 
 ## Cast Visibility（阵容可见性）
