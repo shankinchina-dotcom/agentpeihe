@@ -6,7 +6,7 @@
 
 ## 2026-11-17
 
-- **fix · 双副本收敛 + 受控同步 + prompt 95% 预警**：flat→nested 逐条补丁补齐 10-23 CodeBuddy 多通道、Codex luna 与 10-26 K3.1 Pro WIP（原样保留，未提交/未部署）；nested 新版 Win10 HANDOFF、三份 Win10 资料与 WSL 自检脚本回灌 flat，flat `.gitignore` 补到 nested。镜像清单扩展到生成器、公共测试、Windows 文档/脚本共 20 文件，配 3 份 CHANGELOG 共 **23 项 PASS**。新增同步脚本：默认只看 diff，`--apply` 写入，脏源/脏目标必须经授权 `--allow-dirty`，原子替换后自动复检；主仓 CI 做双仓检查与每日复查，flat CI 跑自身单测（未推送触发）。prompt 删除重复的会话命名与 ACP 参数措辞但保留规则本体，12KiB 硬门新增 11,673B 预警；默认 dry-run flat/nested = **11,606B/11,630B**，Kimi/no-codex nested = **11,518B**。flat/nested 单测各 **56 OK**，主仓护栏/同步测试 **18 OK**；G64 当前子 spec 行为补 **5 项**回归并做父 prompt 负向对照，活体复派留部署窗口。
+- **fix · 双副本收敛 + 受控同步 + prompt 95% 预警**：flat→nested 逐条补丁补齐 10-23 CodeBuddy 多通道、Codex luna 与 10-26 K3.1 Pro（已随任务提交并部署）；nested 新版 Win10 HANDOFF、三份 Win10 资料与 WSL 自检脚本回灌 flat，flat `.gitignore` 补到 nested。镜像清单扩展到生成器、公共测试、Windows 文档/脚本共 20 文件，配 3 份 CHANGELOG 共 **23 项 PASS**。新增同步脚本：默认只看 diff，`--apply` 写入，脏源/脏目标必须经授权 `--allow-dirty`，原子替换后自动复检；主仓 CI 做双仓检查与每日复查，flat CI 跑自身单测；主仓 run 44071218410、flat run 44071191031 均 success。prompt 删除重复的会话命名与 ACP 参数措辞但保留规则本体，12KiB 硬门新增 11,673B 预警；默认 dry-run flat/nested = **11,606B/11,630B**，Kimi/no-codex nested = **11,518B**。flat/nested 单测各 **56 OK**，主仓护栏/同步测试 **18 OK**，全量 stores **460/460**；G64 当前子 spec 行为补 **5 项**回归并做父 prompt 负向对照，controller v41 活体验证真实 `exec_anthropic` 子进程使用 3669B worker prompt、非 controller prompt；bundle 11/11 一致，已提交推送并带 `--agent` 重启生效。
 
 ---
 
